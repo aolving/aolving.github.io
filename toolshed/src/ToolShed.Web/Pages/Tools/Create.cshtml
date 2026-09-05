@@ -1,0 +1,37 @@
+@page
+@model ToolShed.Web.Pages.Tools.CreateModel
+@{
+    ViewData["Title"] = "Add a tool";
+}
+<h1>Add a tool</h1>
+
+<partial name="_ValidationSummary" model="ModelState" />
+
+<form method="post" enctype="multipart/form-data" class="card form">
+    <label asp-for="Input.Name">Name</label>
+    <input asp-for="Input.Name" maxlength="120" required />
+
+    <label asp-for="Input.Category">Category</label>
+    <input asp-for="Input.Category" maxlength="60" list="categories" required />
+    <datalist id="categories">
+        @foreach (var category in Model.KnownCategories)
+        {
+            <option value="@category"></option>
+        }
+    </datalist>
+
+    <label asp-for="Input.Description">Description</label>
+    <textarea asp-for="Input.Description" rows="4" maxlength="2000"></textarea>
+
+    <label asp-for="Input.PickupLocation">Collection point</label>
+    <input asp-for="Input.PickupLocation" maxlength="120" placeholder="e.g. Garage, back gate" />
+
+    <label asp-for="Input.MaxLoanDays">Longest single loan (days)</label>
+    <input asp-for="Input.MaxLoanDays" type="number" min="1" max="90" required />
+
+    <label asp-for="Photos">Photos</label>
+    <input asp-for="Photos" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple />
+    <p class="hint">Up to @ImageValidator.MaxPhotosPerTool photos, @(ImageValidator.MaxBytes / (1024 * 1024)) MB each. JPEG, PNG, GIF or WebP.</p>
+
+    <button type="submit">List this tool</button>
+</form>

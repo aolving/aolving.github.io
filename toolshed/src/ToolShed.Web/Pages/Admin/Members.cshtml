@@ -1,0 +1,43 @@
+@page
+@model ToolShed.Web.Pages.Admin.MembersModel
+@{
+    ViewData["Title"] = "Members";
+}
+<h1>Members</h1>
+<p class="muted">Suspending a member ends their sessions and blocks sign-in without deleting their tools or loan history.</p>
+
+<table class="table">
+    <thead>
+    <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Joined</th>
+        <th>State</th>
+        <th></th>
+    </tr>
+    </thead>
+    <tbody>
+    @foreach (var member in Model.Members)
+    {
+        <tr>
+            <td>@member.DisplayName</td>
+            <td>@member.Email</td>
+            <td>@member.Role</td>
+            <td>@member.JoinedUtc.ToLocalTime().ToString("d MMM yyyy")</td>
+            <td>@(member.IsSuspended ? "Suspended" : "Active")</td>
+            <td>
+                @if (!member.IsSelf)
+                {
+                    <form method="post" asp-page-handler="Toggle" class="inline-form">
+                        <input type="hidden" name="userId" value="@member.Id" />
+                        <button class="link-button @(member.IsSuspended ? "" : "danger")" type="submit">
+                            @(member.IsSuspended ? "Restore" : "Suspend")
+                        </button>
+                    </form>
+                }
+            </td>
+        </tr>
+    }
+    </tbody>
+</table>

@@ -1,0 +1,12 @@
+@model Microsoft.AspNetCore.Mvc.ModelBinding.ModelStateDictionary
+@if (!Model.IsValid)
+{
+    <div class="notice notice-bad">
+        <ul class="plain-list">
+            @foreach (var message in Model.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage).Where(m => !string.IsNullOrWhiteSpace(m)).Distinct())
+            {
+                <li>@message</li>
+            }
+        </ul>
+    </div>
+}

@@ -1,0 +1,43 @@
+@page
+@model ToolShed.Web.Pages.Tools.MineModel
+@{
+    ViewData["Title"] = "My tools";
+}
+<h1>My tools</h1>
+<p><a class="button" asp-page="/Tools/Create">Add a tool</a></p>
+
+@if (Model.Tools.Count == 0)
+{
+    <p class="muted">You have not listed anything yet.</p>
+}
+else
+{
+    <ul class="grid plain-list">
+        @foreach (var tool in Model.Tools)
+        {
+            <li class="card tool-card">
+                <a asp-page="/Tools/Details" asp-route-id="@tool.Id" class="tool-link">
+                    @if (tool.PrimaryPhotoId is int photoId)
+                    {
+                        <img class="thumb" src="/photos/@photoId" alt="@tool.Name" loading="lazy" />
+                    }
+                    else
+                    {
+                        <span class="thumb thumb-empty">No photo yet</span>
+                    }
+                    <span class="tool-name">@tool.Name</span>
+                </a>
+                <p class="muted">@tool.Category &middot; @tool.PhotoCount photo(s)</p>
+                @if (!tool.IsListed)
+                {
+                    <p class="pill pill-busy">Paused</p>
+                }
+                @if (tool.PendingRequests > 0)
+                {
+                    <p class="pill pill-alert">@tool.PendingRequests request(s) waiting</p>
+                }
+                <p><a asp-page="/Tools/Edit" asp-route-id="@tool.Id">Edit</a></p>
+            </li>
+        }
+    </ul>
+}

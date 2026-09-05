@@ -1,0 +1,38 @@
+@page
+@model ToolShed.Web.Pages.Account.ManageModel
+@{
+    ViewData["Title"] = "My account";
+}
+<h1>My account</h1>
+
+<partial name="_ValidationSummary" model="ModelState" />
+
+<section class="card">
+    <h2>Profile</h2>
+    <p class="muted">Signed in as @Model.Email</p>
+    <form method="post" asp-page-handler="Profile" class="form">
+        <label asp-for="Profile.DisplayName">Display name</label>
+        <input asp-for="Profile.DisplayName" maxlength="80" required />
+
+        <label asp-for="Profile.Location">Rough area</label>
+        <input asp-for="Profile.Location" maxlength="120" />
+
+        <button type="submit">Save profile</button>
+    </form>
+</section>
+
+<section class="card">
+    <h2>Change password</h2>
+    <form method="post" asp-page-handler="Password" class="form">
+        <label asp-for="Password.CurrentPassword">Current password</label>
+        <input asp-for="Password.CurrentPassword" type="password" autocomplete="current-password" required />
+
+        <label asp-for="Password.NewPassword">New password</label>
+        <input asp-for="Password.NewPassword" type="password" autocomplete="new-password" required />
+
+        <label asp-for="Password.ConfirmPassword">Confirm new password</label>
+        <input asp-for="Password.ConfirmPassword" type="password" autocomplete="new-password" required />
+
+        <button type="submit">Change password</button>
+    </form>
+</section>

@@ -1,0 +1,56 @@
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject IConfiguration Configuration
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>@ViewData["Title"] &middot; @Configuration["Portal:Name"]</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+<header class="masthead">
+    <a class="brand" asp-page="/Index">@Configuration["Portal:Name"]</a>
+    <nav class="nav">
+        @if (SignInManager.IsSignedIn(User))
+        {
+            <a asp-page="/Index">Catalogue</a>
+            <a asp-page="/Tools/Mine">My tools</a>
+            <a asp-page="/Bookings/Index">Loans</a>
+            @if (User.IsInRole(Roles.Admin))
+            {
+                <a asp-page="/Admin/Invitations">Invitations</a>
+                <a asp-page="/Admin/Members">Members</a>
+            }
+            <a asp-page="/Account/Manage">@UserManager.GetUserName(User)</a>
+            <form class="inline-form" asp-page="/Account/Logout" method="post">
+                <button class="link-button" type="submit">Sign out</button>
+            </form>
+        }
+        else
+        {
+            <a asp-page="/Account/Login">Sign in</a>
+        }
+    </nav>
+</header>
+
+<main class="page">
+    @if (TempData["Status"] is string status)
+    {
+        <p class="notice notice-good">@status</p>
+    }
+    @if (TempData["Error"] is string error)
+    {
+        <p class="notice notice-bad">@error</p>
+    }
+    @RenderBody()
+</main>
+
+<footer class="footer">
+    <span>@Configuration["Portal:Tagline"]</span>
+    <span>Members only. Do not share your sign-in.</span>
+</footer>
+</body>
+</html>

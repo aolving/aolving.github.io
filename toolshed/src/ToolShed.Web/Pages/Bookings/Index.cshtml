@@ -1,0 +1,94 @@
+@page
+@model ToolShed.Web.Pages.Bookings.IndexModel
+@{
+    ViewData["Title"] = "Loans";
+}
+<h1>Loans</h1>
+
+<section>
+    <h2>Requests for my tools</h2>
+    @if (Model.Incoming.Count == 0)
+    {
+        <p class="muted">Nobody has asked to borrow anything.</p>
+    }
+    else
+    {
+        <ul class="plain-list stack">
+            @foreach (var booking in Model.Incoming)
+            {
+                <li class="card">
+                    <p>
+                        <strong>@(booking.Tool!.Name)</strong> for <strong>@(booking.Borrower!.DisplayName)</strong><br />
+                        @booking.StartDate.ToString("d MMM yyyy") &ndash; @booking.EndDate.ToString("d MMM yyyy")
+                        (@booking.Days day(s))
+                    </p>
+                    <p class="pill @Model.PillClass(booking.Status)">@booking.Status</p>
+                    @if (!string.IsNullOrWhiteSpace(booking.BorrowerNote))
+                    {
+                        <p class="quote">@booking.BorrowerNote</p>
+                    }
+                    <div class="row">
+                        @if (booking.Status == BookingStatus.Requested)
+                        {
+                            <form method="post" asp-page-handler="Approve" class="inline-form">
+                                <input type="hidden" name="bookingId" value="@booking.Id" />
+                                <button type="submit">Approve</button>
+                            </form>
+                            <form method="post" asp-page-handler="Decline" class="inline-form">
+                                <input type="hidden" name="bookingId" value="@booking.Id" />
+                                <button class="danger" type="submit">Decline</button>
+                            </form>
+                        }
+                        else if (booking.Status == BookingStatus.Approved)
+                        {
+                            <form method="post" asp-page-handler="Returned" class="inline-form">
+                                <input type="hidden" name="bookingId" value="@booking.Id" />
+                                <button type="submit">Mark returned</button>
+                            </form>
+                            <form method="post" asp-page-handler="Cancel" class="inline-form">
+                                <input type="hidden" name="bookingId" value="@booking.Id" />
+                                <button class="danger" type="submit">Cancel loan</button>
+                            </form>
+                        }
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+<section>
+    <h2>Tools I have asked for</h2>
+    @if (Model.Outgoing.Count == 0)
+    {
+        <p class="muted">You have not booked anything. <a asp-page="/Index">Browse the catalogue</a>.</p>
+    }
+    else
+    {
+        <ul class="plain-list stack">
+            @foreach (var booking in Model.Outgoing)
+            {
+                <li class="card">
+                    <p>
+                        <a asp-page="/Tools/Details" asp-route-id="@booking.ToolId"><strong>@(booking.Tool!.Name)</strong></a>
+                        from @(booking.Tool.Owner!.DisplayName)<br />
+                        @booking.StartDate.ToString("d MMM yyyy") &ndash; @booking.EndDate.ToString("d MMM yyyy")
+                        (@booking.Days day(s))
+                    </p>
+                    <p class="pill @Model.PillClass(booking.Status)">@booking.Status</p>
+                    @if (!string.IsNullOrWhiteSpace(booking.OwnerNote))
+                    {
+                        <p class="quote">@booking.OwnerNote</p>
+                    }
+                    @if (booking.HoldsDates)
+                    {
+                        <form method="post" asp-page-handler="Cancel" class="inline-form">
+                            <input type="hidden" name="bookingId" value="@booking.Id" />
+                            <button class="danger" type="submit">Cancel</button>
+                        </form>
+                    }
+                </li>
+            }
+        </ul>
+    }
+</section>

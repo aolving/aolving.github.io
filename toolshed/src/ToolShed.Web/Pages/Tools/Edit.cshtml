@@ -1,0 +1,91 @@
+@page "{id:int}"
+@model ToolShed.Web.Pages.Tools.EditModel
+@{
+    ViewData["Title"] = $"Edit {Model.Tool.Name}";
+}
+<h1>Edit @Model.Tool.Name</h1>
+<p><a asp-page="/Tools/Details" asp-route-id="@Model.Tool.Id">View the public listing</a></p>
+
+<partial name="_ValidationSummary" model="ModelState" />
+
+<form method="post" asp-page-handler="Save" asp-route-id="@Model.Tool.Id" class="card form">
+    <label asp-for="Input.Name">Name</label>
+    <input asp-for="Input.Name" maxlength="120" required />
+
+    <label asp-for="Input.Category">Category</label>
+    <input asp-for="Input.Category" maxlength="60" required />
+
+    <label asp-for="Input.Description">Description</label>
+    <textarea asp-for="Input.Description" rows="4" maxlength="2000"></textarea>
+
+    <label asp-for="Input.PickupLocation">Collection point</label>
+    <input asp-for="Input.PickupLocation" maxlength="120" />
+
+    <label asp-for="Input.MaxLoanDays">Longest single loan (days)</label>
+    <input asp-for="Input.MaxLoanDays" type="number" min="1" max="90" required />
+
+    <label class="checkbox">
+        <input asp-for="Input.IsListed" type="checkbox" />
+        Listed in the catalogue and open to requests
+    </label>
+
+    <button type="submit">Save changes</button>
+</form>
+
+<section class="card">
+    <h2>Photos</h2>
+    @if (Model.Tool.Photos.Count == 0)
+    {
+        <p class="muted">No photos yet.</p>
+    }
+    else
+    {
+        <ul class="gallery plain-list">
+            @foreach (var photo in Model.Tool.Photos.OrderByDescending(p => p.IsPrimary).ThenBy(p => p.Id))
+            {
+                <li class="gallery-item">
+                    <img class="photo" src="/photos/@photo.Id" alt="@Model.Tool.Name" loading="lazy" />
+                    <div class="row">
+                        @if (photo.IsPrimary)
+                        {
+                            <span class="pill pill-free">Cover photo</span>
+                        }
+                        else
+                        {
+                            <form method="post" asp-page-handler="MakePrimary" asp-route-id="@Model.Tool.Id" class="inline-form">
+                                <input type="hidden" name="photoId" value="@photo.Id" />
+                                <button class="link-button" type="submit">Make cover</button>
+                            </form>
+                        }
+                        <form method="post" asp-page-handler="DeletePhoto" asp-route-id="@Model.Tool.Id" class="inline-form">
+                            <input type="hidden" name="photoId" value="@photo.Id" />
+                            <button class="link-button danger" type="submit">Delete</button>
+                        </form>
+                    </div>
+                </li>
+            }
+        </ul>
+    }
+
+    @if (Model.Tool.Photos.Count < ImageValidator.MaxPhotosPerTool)
+    {
+        <form method="post" asp-page-handler="AddPhotos" asp-route-id="@Model.Tool.Id" enctype="multipart/form-data" class="form">
+            <label asp-for="NewPhotos">Add photos</label>
+            <input asp-for="NewPhotos" type="file" accept="image/jpeg,image/png,image/gif,image/webp" multiple required />
+            <p class="hint">Room for @(ImageValidator.MaxPhotosPerTool - Model.Tool.Photos.Count) more.</p>
+            <button type="submit">Upload</button>
+        </form>
+    }
+    else
+    {
+        <p class="hint">This listing already has the maximum of @ImageValidator.MaxPhotosPerTool photos.</p>
+    }
+</section>
+
+<section class="card danger-zone">
+    <h2>Remove this tool</h2>
+    <p class="muted">Deleting the listing also deletes its photos and its loan history.</p>
+    <form method="post" asp-page-handler="Delete" asp-route-id="@Model.Tool.Id" class="inline-form">
+        <button class="danger" type="submit">Delete listing</button>
+    </form>
+</section>

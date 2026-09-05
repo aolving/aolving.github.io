@@ -1,0 +1,12 @@
+@page
+@model ToolShed.Web.Pages.ErrorModel
+@{
+    ViewData["Title"] = "Something went wrong";
+}
+<h1>Something went wrong</h1>
+<p>The request could not be completed. If it keeps happening, tell an administrator.</p>
+@if (!string.IsNullOrEmpty(Model.RequestId))
+{
+    <p class="muted">Reference: <code>@Model.RequestId</code></p>
+}
+<p><a asp-page="/Index">Back to the catalogue</a></p>

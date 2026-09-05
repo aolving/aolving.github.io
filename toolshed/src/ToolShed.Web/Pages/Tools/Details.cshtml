@@ -1,0 +1,88 @@
+@page "{id:int}"
+@model ToolShed.Web.Pages.Tools.DetailsModel
+@{
+    ViewData["Title"] = Model.Tool.Name;
+}
+<h1>@Model.Tool.Name</h1>
+<p class="muted">
+    @Model.Tool.Category &middot; owned by @(Model.Tool.Owner!.DisplayName)
+    @if (!string.IsNullOrWhiteSpace(Model.Tool.PickupLocation))
+    {
+        <text>&middot; collect from @Model.Tool.PickupLocation</text>
+    }
+</p>
+
+@if (Model.IsOwner)
+{
+    <p><a class="button" asp-page="/Tools/Edit" asp-route-id="@Model.Tool.Id">Edit this listing</a></p>
+}
+
+@if (Model.Tool.Photos.Count > 0)
+{
+    <ul class="gallery plain-list">
+        @foreach (var photo in Model.Tool.Photos.OrderByDescending(p => p.IsPrimary).ThenBy(p => p.Id))
+        {
+            <li>
+                <img class="photo" src="/photos/@photo.Id" alt="@(photo.Caption ?? Model.Tool.Name)" loading="lazy" />
+            </li>
+        }
+    </ul>
+}
+else
+{
+    <p class="muted">No photos yet.</p>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.Tool.Description))
+{
+    <p class="description">@Model.Tool.Description</p>
+}
+
+<section class="card">
+    <h2>Calendar</h2>
+    @if (Model.Held.Count == 0)
+    {
+        <p class="muted">Nothing booked. It is yours for the asking.</p>
+    }
+    else
+    {
+        <ul class="plain-list">
+            @foreach (var held in Model.Held)
+            {
+                <li>
+                    @held.StartDate.ToString("d MMM yyyy") &ndash; @held.EndDate.ToString("d MMM yyyy")
+                    <span class="muted">(@(held.Status == BookingStatus.Approved ? "booked" : "requested"))</span>
+                </li>
+            }
+        </ul>
+    }
+</section>
+
+@if (Model.IsOwner)
+{
+    <p class="muted">This is your tool, so you cannot book it. Requests show up under <a asp-page="/Bookings/Index">Loans</a>.</p>
+}
+else if (!Model.Tool.IsListed)
+{
+    <p class="notice notice-bad">The owner has paused loans for this tool.</p>
+}
+else
+{
+    <section class="card">
+        <h2>Ask to borrow it</h2>
+        <partial name="_ValidationSummary" model="ModelState" />
+        <form method="post" class="form">
+            <label asp-for="Input.StartDate">Collect on</label>
+            <input asp-for="Input.StartDate" type="date" min="@Model.Today.ToString("yyyy-MM-dd")" required />
+
+            <label asp-for="Input.EndDate">Return by</label>
+            <input asp-for="Input.EndDate" type="date" min="@Model.Today.ToString("yyyy-MM-dd")" required />
+
+            <label asp-for="Input.Note">Note for the owner</label>
+            <textarea asp-for="Input.Note" rows="3" maxlength="1000"></textarea>
+
+            <p class="hint">Loans on this tool run up to @Model.Tool.MaxLoanDays day(s).</p>
+            <button type="submit">Send request</button>
+        </form>
+    </section>
+}

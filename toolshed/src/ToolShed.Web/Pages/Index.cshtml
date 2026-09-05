@@ -1,0 +1,58 @@
+@page
+@model ToolShed.Web.Pages.IndexModel
+@{
+    ViewData["Title"] = "Catalogue";
+}
+<h1>What the shed has</h1>
+
+<form method="get" class="filters">
+    <label asp-for="Query" class="sr-only">Search</label>
+    <input asp-for="Query" type="search" placeholder="Search tools" maxlength="60" />
+
+    <label asp-for="Category" class="sr-only">Category</label>
+    <select asp-for="Category">
+        <option value="">All categories</option>
+        @foreach (var category in Model.Categories)
+        {
+            <option value="@category">@category</option>
+        }
+    </select>
+
+    <button type="submit">Filter</button>
+    <a asp-page="/Index">Clear</a>
+</form>
+
+@if (Model.Tools.Count == 0)
+{
+    <p class="muted">Nothing matches yet. <a asp-page="/Tools/Create">Add one of yours</a>.</p>
+}
+else
+{
+    <ul class="grid plain-list">
+        @foreach (var tool in Model.Tools)
+        {
+            <li class="card tool-card">
+                <a asp-page="/Tools/Details" asp-route-id="@tool.Id" class="tool-link">
+                    @if (tool.PrimaryPhotoId is int photoId)
+                    {
+                        <img class="thumb" src="/photos/@photoId" alt="@tool.Name" loading="lazy" />
+                    }
+                    else
+                    {
+                        <span class="thumb thumb-empty">No photo yet</span>
+                    }
+                    <span class="tool-name">@tool.Name</span>
+                </a>
+                <p class="muted">@tool.Category &middot; @tool.OwnerName</p>
+                @if (tool.OnLoanUntil is DateOnly until)
+                {
+                    <p class="pill pill-busy">On loan until @until.ToString("d MMM")</p>
+                }
+                else
+                {
+                    <p class="pill pill-free">Available</p>
+                }
+            </li>
+        }
+    </ul>
+}

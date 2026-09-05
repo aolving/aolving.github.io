@@ -1,0 +1,77 @@
+@page
+@model ToolShed.Web.Pages.Admin.InvitationsModel
+@{
+    ViewData["Title"] = "Invitations";
+}
+<h1>Invitations</h1>
+<p class="muted">An invitation is the only way in. Each one is single use, tied to one email address and expires on its own.</p>
+
+@if (Model.IssuedLink is not null)
+{
+    <div class="notice notice-good">
+        <p>Invitation for <strong>@Model.IssuedEmail</strong>. Send this link to that address now &mdash; it is shown once and cannot be recovered.</p>
+        <p><code class="break">@Model.IssuedLink</code></p>
+    </div>
+}
+
+<partial name="_ValidationSummary" model="ModelState" />
+
+<form method="post" asp-page-handler="Issue" class="card form">
+    <h2>Invite someone</h2>
+
+    <label asp-for="Input.Email">Their email</label>
+    <input asp-for="Input.Email" type="email" maxlength="200" required />
+
+    <label asp-for="Input.Role">Role</label>
+    <select asp-for="Input.Role">
+        <option value="@Roles.Member">Member &mdash; can list and borrow tools</option>
+        <option value="@Roles.Admin">Admin &mdash; can also invite and suspend members</option>
+    </select>
+
+    <label asp-for="Input.ValidForDays">Valid for (days)</label>
+    <input asp-for="Input.ValidForDays" type="number" min="1" max="30" required />
+
+    <button type="submit">Create invitation</button>
+</form>
+
+<section class="card">
+    <h2>Outstanding and recent</h2>
+    @if (Model.Invitations.Count == 0)
+    {
+        <p class="muted">No invitations yet.</p>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+            <tr>
+                <th>Email</th>
+                <th>Role</th>
+                <th>State</th>
+                <th>Expires</th>
+                <th></th>
+            </tr>
+            </thead>
+            <tbody>
+            @foreach (var invitation in Model.Invitations)
+            {
+                <tr>
+                    <td>@invitation.Email.ToLowerInvariant()</td>
+                    <td>@invitation.Role</td>
+                    <td>@Model.Describe(invitation)</td>
+                    <td>@invitation.ExpiresUtc.ToLocalTime().ToString("d MMM yyyy")</td>
+                    <td>
+                        @if (invitation.IsUsableAt(Model.Now))
+                        {
+                            <form method="post" asp-page-handler="Revoke" class="inline-form">
+                                <input type="hidden" name="invitationId" value="@invitation.Id" />
+                                <button class="link-button danger" type="submit">Revoke</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</section>
