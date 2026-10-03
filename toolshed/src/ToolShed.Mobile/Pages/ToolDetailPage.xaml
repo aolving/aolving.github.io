@@ -2,6 +2,7 @@
 <pages:PageBase xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
                 xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
                 xmlns:pages="clr-namespace:ToolShed.Mobile.Pages"
+                xmlns:controls="clr-namespace:ToolShed.Mobile.Controls"
                 x:Class="ToolShed.Mobile.Pages.ToolDetailPage"
                 Title="Tool">
     <ScrollView>
@@ -23,26 +24,17 @@
 
             <Border Style="{StaticResource Card}">
                 <VerticalStackLayout Spacing="8">
-                    <Label Text="Next six weeks" FontAttributes="Bold" />
-                    <Grid x:Name="StripGrid" ColumnSpacing="4" RowSpacing="4" />
-                    <HorizontalStackLayout Spacing="14">
-                        <Label Text="Free" TextColor="{StaticResource Good}" FontSize="12" />
-                        <Label Text="Requested" TextColor="{StaticResource Amber}" FontSize="12" />
-                        <Label Text="Booked" TextColor="{StaticResource Danger}" FontSize="12" />
-                    </HorizontalStackLayout>
+                    <Label x:Name="DatesHeading" Text="Pick your dates" FontAttributes="Bold" />
+                    <controls:BookingCalendarView x:Name="Calendar" SelectionChanged="OnSelectionChanged" />
                 </VerticalStackLayout>
             </Border>
 
             <Border x:Name="RequestCard" Style="{StaticResource Card}" IsVisible="False">
                 <VerticalStackLayout Spacing="8">
                     <Label Text="Ask to borrow it" FontAttributes="Bold" />
-                    <Label Text="Collect on" FontSize="13" TextColor="{StaticResource Muted}" />
-                    <DatePicker x:Name="StartPicker" />
-                    <Label Text="Return by" FontSize="13" TextColor="{StaticResource Muted}" />
-                    <DatePicker x:Name="EndPicker" />
                     <Editor x:Name="NoteEditor" Placeholder="Note for the owner (optional)" HeightRequest="80" MaxLength="1000" AutoSize="TextChanges" />
                     <Label x:Name="LimitLabel" FontSize="12" TextColor="{StaticResource Muted}" />
-                    <Button x:Name="RequestButton" Text="Send request" Clicked="OnRequest" />
+                    <Button x:Name="RequestButton" Text="Send request" Clicked="OnRequest" IsEnabled="False" />
                 </VerticalStackLayout>
             </Border>
 

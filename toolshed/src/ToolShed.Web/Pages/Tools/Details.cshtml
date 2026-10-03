@@ -38,7 +38,7 @@ else
     <p class="description">@Model.Tool.Description</p>
 }
 
-<section class="card">
+<section class="card" data-availability-strip>
     <h2>Next six weeks</h2>
     <ol class="strip plain-list" aria-label="Availability for the next six weeks">
         @for (var blank = 0; blank < Model.StripLeadingBlanks; blank++)
@@ -85,21 +85,37 @@ else if (!Model.Tool.IsListed)
 }
 else
 {
-    <section class="card">
+    <section class="card booking" data-booking-calendar
+             data-today="@Model.Today.ToString("yyyy-MM-dd")"
+             data-max-days="@Model.Tool.MaxLoanDays"
+             data-held="@Model.HeldJson"
+             data-start-input="Input_StartDate"
+             data-end-input="Input_EndDate">
         <h2>Ask to borrow it</h2>
         <partial name="_ValidationSummary" model="ModelState" />
         <form method="post" class="form">
-            <label asp-for="Input.StartDate">Collect on</label>
-            <input asp-for="Input.StartDate" type="date" min="@Model.Today.ToString("yyyy-MM-dd")" required />
+            @* With scripts, the calendar appears here and replaces the two date fields below. *@
+            <div data-booking-widget></div>
 
-            <label asp-for="Input.EndDate">Return by</label>
-            <input asp-for="Input.EndDate" type="date" min="@Model.Today.ToString("yyyy-MM-dd")" required />
+            <div class="booking-fields">
+                <p class="hint">Pick your dates: the first date is when you collect it, the second is the last day. The return date cannot be before the collection date.</p>
+
+                <label asp-for="Input.StartDate">Collect on</label>
+                <input asp-for="Input.StartDate" type="date" min="@Model.Today.ToString("yyyy-MM-dd")" required />
+
+                <label asp-for="Input.EndDate">Return by (last day)</label>
+                <input asp-for="Input.EndDate" type="date" min="@Model.Today.ToString("yyyy-MM-dd")" required />
+            </div>
 
             <label asp-for="Input.Note">Note for the owner</label>
             <textarea asp-for="Input.Note" rows="3" maxlength="1000"></textarea>
 
             <p class="hint">Loans on this tool run up to @Model.Tool.MaxLoanDays day(s).</p>
-            <button type="submit">Send request</button>
+            <button type="submit" data-booking-submit>Send request</button>
         </form>
     </section>
+}
+
+@section Scripts {
+    <script src="~/js/booking-calendar.js" asp-append-version="true" defer></script>
 }

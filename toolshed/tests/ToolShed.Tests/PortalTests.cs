@@ -831,6 +831,65 @@ public class PortalTests
     }
 
     [Fact]
+    public async Task The_tool_page_gives_the_calendar_everything_it_needs_and_stops_owners_booking()
+    {
+        var admin = await AdminAsync();
+        var (owner, _) = await NewMemberAsync(admin, "calendar-owner");
+
+        var token = await owner.AntiforgeryTokenAsync("/Tools/Create");
+        var created = await owner.PostAsync("/Tools/Create", ToolForm(token, "Calendar drill", "drill.png", "image/png", PngBytes));
+        var toolId = RedirectTarget(created).Split('/').Last();
+        var detailsUrl = $"/Tools/Details/{toolId}";
+
+        // A member who could borrow it gets the calendar's hooks and the fields it drives.
+        var html = await admin.GetHtmlAsync(detailsUrl);
+        Assert.Contains("data-booking-calendar", html);
+        Assert.Contains("data-max-days=\"7\"", html);
+        Assert.Matches("data-today=\"\\d{4}-\\d{2}-\\d{2}\"", html);
+        Assert.Contains("data-start-input=\"Input_StartDate\"", html);
+        Assert.Contains("data-end-input=\"Input_EndDate\"", html);
+        Assert.Contains("id=\"Input_StartDate\"", html);
+        Assert.Contains("id=\"Input_EndDate\"", html);
+        Assert.Contains("data-booking-submit", html);
+        Assert.Matches("<script src=\"/js/booking-calendar\\.js\\?v=", html);
+
+        // Without scripts the plain fields are still there and still enforce the first date as the start.
+        Assert.Contains("The return date cannot be before the collection date", html);
+
+        // The owner cannot book their own tool, so there is no calendar for them.
+        Assert.DoesNotContain("data-booking-calendar", await owner.GetHtmlAsync(detailsUrl));
+
+        // Once someone has booked it, the dates that are taken are handed to the calendar so it can refuse them.
+        var start = DateOnly.FromDateTime(DateTime.Now).AddDays(6);
+        await admin.PostFormAsync(detailsUrl, detailsUrl,
+        [
+            new("Input.StartDate", start.ToString("yyyy-MM-dd")),
+            new("Input.EndDate", start.AddDays(1).ToString("yyyy-MM-dd")),
+            new("Input.Note", string.Empty)
+        ]);
+        var (other, _) = await NewMemberAsync(admin, "calendar-other");
+        var otherHtml = await other.GetHtmlAsync(detailsUrl);
+        var held = Regex.Match(otherHtml, "data-held=\"([^\"]*)\"").Groups[1].Value;
+        Assert.Contains($"[\"{start:yyyy-MM-dd}\",\"{start.AddDays(1):yyyy-MM-dd}\",0]", WebUtility.HtmlDecode(held));
+    }
+
+    [Fact]
+    public async Task The_calendar_script_is_served_as_a_plain_file_and_allowed_by_the_content_security_policy()
+    {
+        var client = _factory.NewClient();
+
+        var response = await client.GetAsync("/js/booking-calendar.js");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("javascript", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("createSelection", await response.Content.ReadAsStringAsync());
+        // Same-origin scripts only, with no inline script: the calendar ships as its own file for that reason.
+        var csp = (await client.GetAsync("/Account/Login")).Headers.GetValues("Content-Security-Policy").Single();
+        Assert.Contains("script-src 'self'", csp);
+        Assert.DoesNotContain("unsafe-inline", csp);
+    }
+
+    [Fact]
     public async Task Uploads_that_are_not_photos_are_rejected()
     {
         var admin = await AdminAsync();

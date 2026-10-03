@@ -70,6 +70,13 @@ public class DetailsModel : PageModel
 
     public DateOnly Today => _bookings.Today;
 
+    /// <summary>
+    /// The dates already requested or booked, as [start, end, approved] triples for the calendar. These are
+    /// the same ranges the server refuses to overlap, so the calendar can stop them being picked at all.
+    /// </summary>
+    public string HeldJson => System.Text.Json.JsonSerializer.Serialize(
+        Held.Select(b => new object[] { b.StartDate.ToString("yyyy-MM-dd"), b.EndDate.ToString("yyyy-MM-dd"), b.Status == BookingStatus.Approved ? 1 : 0 }));
+
     [BindProperty]
     public InputModel Input { get; set; } = new();
 

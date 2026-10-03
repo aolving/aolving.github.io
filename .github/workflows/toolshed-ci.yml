@@ -34,6 +34,12 @@ jobs:
       - name: Test
         run: dotnet test toolshed/ToolShed.sln --configuration Release --no-build --verbosity normal
 
+      # The website's booking calendar is a small script; its rules are tested on their own with Node's
+      # built-in runner (no packages to install). Run from the folder so every Node version finds the tests.
+      - name: Calendar rule tests (JavaScript)
+        working-directory: toolshed/tests/js
+        run: node --test
+
   docker:
     runs-on: ubuntu-latest
     steps:

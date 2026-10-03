@@ -7,9 +7,6 @@ namespace ToolShed.Mobile.Pages;
 [QueryProperty(nameof(ToolIdText), "id")]
 public partial class ToolDetailPage : PageBase
 {
-    /// <summary>How many days the availability strip covers. Matches the website.</summary>
-    private const int StripDays = 42;
-
     private readonly PhotoCache _photos;
     private int _toolId;
     private ToolDetailDto? _tool;
@@ -18,22 +15,6 @@ public partial class ToolDetailPage : PageBase
     {
         InitializeComponent();
         _photos = photos;
-
-        var today = DateTime.Today;
-        StartPicker.MinimumDate = today;
-        EndPicker.MinimumDate = today;
-        StartPicker.Date = today.AddDays(1);
-        EndPicker.Date = today.AddDays(2);
-        StartPicker.DateSelected += (_, e) =>
-        {
-            // Keep the return date from falling behind the collection date.
-            if (EndPicker.Date < e.NewDate)
-            {
-                EndPicker.Date = e.NewDate;
-            }
-
-            EndPicker.MinimumDate = e.NewDate;
-        };
     }
 
     public string? ToolIdText
@@ -66,7 +47,12 @@ public partial class ToolDetailPage : PageBase
         RequestCard.IsVisible = !tool.IsMine && tool.IsListed;
         LimitLabel.Text = $"Loans on this tool run up to {tool.MaxLoanDays} day(s).";
 
-        BuildStrip(tool);
+        // Owners (and anyone looking at a paused tool) see what is booked but cannot pick dates. Everyone
+        // else picks on the calendar: first tap is the start, second is the end, never backwards.
+        var canBook = !tool.IsMine && tool.IsListed;
+        DatesHeading.Text = canBook ? "Pick your dates" : "Availability";
+        Calendar.Load(DateOnly.FromDateTime(DateTime.Today), tool.MaxLoanDays, tool.Held, readOnly: !canBook);
+        RequestButton.IsEnabled = false;
 
         var photos = tool.Photos.Select(p => new PhotoItem(p)).ToList();
         Photos.ItemsSource = photos;
@@ -79,53 +65,9 @@ public partial class ToolDetailPage : PageBase
 
     private async Task LoadPhotoAsync(PhotoItem item) => item.Image = await _photos.GetAsync(item.Id);
 
-    /// <summary>The same six-week calendar the website shows, with weeks starting on Monday.</summary>
-    private void BuildStrip(ToolDetailDto tool)
-    {
-        StripGrid.Children.Clear();
-        StripGrid.ColumnDefinitions.Clear();
-        StripGrid.RowDefinitions.Clear();
-
-        for (var column = 0; column < 7; column++)
-        {
-            StripGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
-        }
-
-        var today = DateOnly.FromDateTime(DateTime.Today);
-        var leading = ((int)today.DayOfWeek + 6) % 7;
-        var rows = (leading + StripDays + 6) / 7;
-        for (var row = 0; row < rows; row++)
-        {
-            StripGrid.RowDefinitions.Add(new RowDefinition(new GridLength(40)));
-        }
-
-        for (var offset = 0; offset < StripDays; offset++)
-        {
-            var day = today.AddDays(offset);
-            var held = tool.Held.Where(h => h.Start <= day && day <= h.End).ToList();
-            var color = held.Any(h => h.Approved)
-                ? Color.FromArgb("#9A2F2F")
-                : held.Count > 0 ? Color.FromArgb("#8A6D1E") : Color.FromArgb("#2F6B3A");
-
-            var cell = new Border
-            {
-                StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 6 },
-                Stroke = color,
-                StrokeThickness = held.Count > 0 ? 2 : 1,
-                Padding = 0,
-                Content = new Label
-                {
-                    Text = day.Day.ToString(),
-                    FontSize = 13,
-                    HorizontalOptions = LayoutOptions.Center,
-                    VerticalOptions = LayoutOptions.Center
-                }
-            };
-
-            var slot = leading + offset;
-            StripGrid.Add(cell, slot % 7, slot / 7);
-        }
-    }
+    // The request can only be sent once the calendar holds a complete, valid range.
+    private void OnSelectionChanged(object? sender, EventArgs e) =>
+        RequestButton.IsEnabled = Calendar.Selection.IsComplete;
 
     private async void OnRequest(object? sender, EventArgs e)
     {
@@ -134,10 +76,16 @@ public partial class ToolDetailPage : PageBase
         {
             await RunAsync(async () =>
             {
+                var selection = Calendar.Selection;
+                if (selection.Start is not DateOnly start || selection.End is not DateOnly end)
+                {
+                    return;
+                }
+
                 await Session.Client.RequestBookingAsync(
                     _toolId,
-                    DateOnly.FromDateTime(StartPicker.Date ?? DateTime.Today),
-                    DateOnly.FromDateTime(EndPicker.Date ?? DateTime.Today),
+                    start,
+                    end,
                     string.IsNullOrWhiteSpace(NoteEditor.Text) ? null : NoteEditor.Text.Trim());
 
                 NoteEditor.Text = string.Empty;
@@ -147,7 +95,9 @@ public partial class ToolDetailPage : PageBase
         }
         finally
         {
-            RequestButton.IsEnabled = true;
+            // After a successful request the page reloads with nothing chosen, so follow the selection
+            // rather than switching the button back on.
+            RequestButton.IsEnabled = Calendar.Selection.IsComplete;
         }
     }
 
