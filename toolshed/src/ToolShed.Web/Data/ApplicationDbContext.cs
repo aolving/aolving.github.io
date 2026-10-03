@@ -19,6 +19,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<Invitation> Invitations => Set<Invitation>();
 
+    public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -72,6 +74,17 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             entity.HasIndex(b => b.BorrowerId);
             entity.Ignore(b => b.HoldsDates);
             entity.Ignore(b => b.Days);
+        });
+
+        builder.Entity<ApiToken>(entity =>
+        {
+            entity.HasOne(t => t.User)
+                .WithMany()
+                .HasForeignKey(t => t.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(t => t.TokenHash).IsUnique();
+            entity.HasIndex(t => t.UserId);
         });
 
         builder.Entity<Invitation>(entity =>

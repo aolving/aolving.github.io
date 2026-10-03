@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The wire format shared by the portal and the mobile apps. Plain types only, so the
+       compiler flags any drift between what the server sends and what the apps expect. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ToolShed.Contracts</RootNamespace>
+  </PropertyGroup>
+
+</Project>

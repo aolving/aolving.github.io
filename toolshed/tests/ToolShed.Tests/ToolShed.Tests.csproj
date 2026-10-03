@@ -19,6 +19,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ToolShed.Web\ToolShed.Web.csproj" />
+    <ProjectReference Include="..\..\src\ToolShed.Client\ToolShed.Client.csproj" />
   </ItemGroup>
 
 </Project>

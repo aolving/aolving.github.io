@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using ToolShed.Contracts;
 using ToolShed.Web.Data;
 using ToolShed.Web.Models;
 using ToolShed.Web.Services;
@@ -13,13 +14,13 @@ public class CreateModel : PageModel
 {
     private readonly ApplicationDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
-    private readonly PhotoStorage _photos;
+    private readonly ToolService _tools;
 
-    public CreateModel(ApplicationDbContext db, UserManager<ApplicationUser> userManager, PhotoStorage photos)
+    public CreateModel(ApplicationDbContext db, UserManager<ApplicationUser> userManager, ToolService tools)
     {
         _db = db;
         _userManager = userManager;
-        _photos = photos;
+        _tools = tools;
     }
 
     [BindProperty]
@@ -58,56 +59,21 @@ public class CreateModel : PageModel
     {
         await LoadCategoriesAsync();
 
-        if (Photos.Count > ImageValidator.MaxPhotosPerTool)
-        {
-            ModelState.AddModelError(nameof(Photos), $"Please attach no more than {ImageValidator.MaxPhotosPerTool} photos.");
-        }
-
         if (!ModelState.IsValid)
         {
             return Page();
         }
 
-        var tool = new Tool
+        var input = new ToolInput(Input.Name, Input.Category, Input.Description, Input.PickupLocation, Input.MaxLoanDays);
+        var result = await _tools.CreateAsync(_userManager.GetUserId(User)!, input, Photos);
+        if (!result.Succeeded)
         {
-            OwnerId = _userManager.GetUserId(User)!,
-            Name = Input.Name.Trim(),
-            Category = Input.Category.Trim(),
-            Description = string.IsNullOrWhiteSpace(Input.Description) ? null : Input.Description.Trim(),
-            PickupLocation = string.IsNullOrWhiteSpace(Input.PickupLocation) ? null : Input.PickupLocation.Trim(),
-            MaxLoanDays = Input.MaxLoanDays
-        };
-
-        var saved = new List<ToolPhoto>();
-        foreach (var file in Photos.Where(f => f.Length > 0))
-        {
-            var (photo, error) = await _photos.SaveAsync(file);
-            if (photo is null)
-            {
-                // Do not leave orphaned bytes behind when one file in a batch is rejected.
-                foreach (var orphan in saved)
-                {
-                    _photos.Delete(orphan);
-                }
-
-                ModelState.AddModelError(nameof(Photos), error ?? "That photo could not be read.");
-                return Page();
-            }
-
-            photo.IsPrimary = saved.Count == 0;
-            saved.Add(photo);
+            ModelState.AddModelError(nameof(Photos), result.Error ?? "That photo could not be read.");
+            return Page();
         }
 
-        foreach (var photo in saved)
-        {
-            tool.Photos.Add(photo);
-        }
-
-        _db.Tools.Add(tool);
-        await _db.SaveChangesAsync();
-
-        TempData["Status"] = $"\"{tool.Name}\" is now in the catalogue.";
-        return RedirectToPage("/Tools/Details", new { id = tool.Id });
+        TempData["Status"] = $"\"{result.Tool!.Name}\" is now in the catalogue.";
+        return RedirectToPage("/Tools/Details", new { id = result.Tool.Id });
     }
 
     private async Task LoadCategoriesAsync() =>

@@ -1,11 +1,13 @@
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using ToolShed.Web.Api;
 using ToolShed.Web.Data;
 using ToolShed.Web.Models;
 using ToolShed.Web.Services;
@@ -86,6 +88,17 @@ builder.Services.Configure<SecurityStampValidatorOptions>(options =>
     options.ValidationInterval = TimeSpan.FromMinutes(1);
 });
 
+// Device tokens for the mobile apps, alongside the website's cookie sign-in.
+builder.Services.AddAuthentication()
+    .AddScheme<AuthenticationSchemeOptions, ApiTokenAuthenticationHandler>(ApiTokenDefaults.Scheme, _ => { })
+    .AddPolicyScheme(ApiTokenDefaults.SmartScheme, "Cookie or device token", options =>
+    {
+        options.ForwardDefaultSelector = context =>
+            context.Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)
+                ? ApiTokenDefaults.Scheme
+                : IdentityConstants.ApplicationScheme;
+    });
+
 builder.Services.AddAuthorization(options =>
 {
     // Nothing is public unless a page opts out explicitly.
@@ -94,6 +107,16 @@ builder.Services.AddAuthorization(options =>
         .Build();
 
     options.AddPolicy("RequireAdmin", policy => policy.RequireRole(Roles.Admin));
+
+    // The JSON API accepts a device token and nothing else (no cookies, so no CSRF surface).
+    options.AddPolicy(ApiTokenDefaults.Policy, policy => policy
+        .AddAuthenticationSchemes(ApiTokenDefaults.Scheme)
+        .RequireAuthenticatedUser());
+
+    // Resources the website and the apps both fetch, such as photos.
+    options.AddPolicy(ApiTokenDefaults.MemberPolicy, policy => policy
+        .AddAuthenticationSchemes(ApiTokenDefaults.SmartScheme)
+        .RequireAuthenticatedUser());
 });
 
 builder.Services.AddRazorPages(options =>
@@ -135,7 +158,8 @@ builder.Services.AddRateLimiter(options =>
     {
         var client = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
         var isCredentialPost = HttpMethods.IsPost(context.Request.Method)
-                               && context.Request.Path.StartsWithSegments("/Account", StringComparison.OrdinalIgnoreCase);
+                               && (context.Request.Path.StartsWithSegments("/Account", StringComparison.OrdinalIgnoreCase)
+                                   || context.Request.Path.StartsWithSegments("/api/v1/auth", StringComparison.OrdinalIgnoreCase));
 
         return isCredentialPost
             ? RateLimitPartition.GetFixedWindowLimiter($"auth:{client}", _ => new FixedWindowRateLimiterOptions
@@ -163,6 +187,8 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<PhotoStorage>();
 builder.Services.AddScoped<InvitationService>();
 builder.Services.AddScoped<BookingService>();
+builder.Services.AddScoped<ToolService>();
+builder.Services.AddScoped<ApiTokenService>();
 builder.Services.AddSingleton<IEmailService, SmtpEmailService>();
 builder.Services.AddScoped<BookingNotifier>();
 
@@ -192,6 +218,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapRazorPages();
+app.MapPortalApi();
 
 // Photo bytes never sit in wwwroot; they are streamed to signed-in members only.
 app.MapGet("/photos/{id:int}", async (
@@ -210,7 +237,7 @@ app.MapGet("/photos/{id:int}", async (
     return stream is null
         ? Results.NotFound()
         : Results.File(stream, photo.ContentType, enableRangeProcessing: true);
-}).RequireAuthorization();
+}).RequireAuthorization(ApiTokenDefaults.MemberPolicy);
 
 using (var scope = app.Services.CreateScope())
 {

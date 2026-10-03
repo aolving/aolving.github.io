@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
+using ToolShed.Contracts;
 using ToolShed.Web.Data;
 using ToolShed.Web.Models;
 using ToolShed.Web.Services;
@@ -13,14 +14,16 @@ public class EditModel : PageModel
 {
     private readonly ApplicationDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
-    private readonly PhotoStorage _photos;
+    private readonly ToolService _tools;
 
-    public EditModel(ApplicationDbContext db, UserManager<ApplicationUser> userManager, PhotoStorage photos)
+    public EditModel(ApplicationDbContext db, UserManager<ApplicationUser> userManager, ToolService tools)
     {
         _db = db;
         _userManager = userManager;
-        _photos = photos;
+        _tools = tools;
     }
+
+    private string UserId => _userManager.GetUserId(User)!;
 
     public Tool Tool { get; private set; } = null!;
 
@@ -88,108 +91,55 @@ public class EditModel : PageModel
             return Page();
         }
 
-        Tool.Name = Input.Name.Trim();
-        Tool.Category = Input.Category.Trim();
-        Tool.Description = string.IsNullOrWhiteSpace(Input.Description) ? null : Input.Description.Trim();
-        Tool.PickupLocation = string.IsNullOrWhiteSpace(Input.PickupLocation) ? null : Input.PickupLocation.Trim();
-        Tool.MaxLoanDays = Input.MaxLoanDays;
-        Tool.IsListed = Input.IsListed;
-        Tool.UpdatedUtc = DateTimeOffset.UtcNow;
+        var input = new ToolInput(Input.Name, Input.Category, Input.Description, Input.PickupLocation, Input.MaxLoanDays, Input.IsListed);
+        var result = await _tools.UpdateAsync(id, UserId, input);
+        if (result.Failure == ToolFailure.NotFound)
+        {
+            return NotFound();
+        }
 
-        await _db.SaveChangesAsync();
         TempData["Status"] = "Listing updated.";
         return RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostAddPhotosAsync(int id)
     {
-        if (!await LoadOwnedAsync(id))
+        var result = await _tools.AddPhotosAsync(id, UserId, NewPhotos);
+        if (result.Failure == ToolFailure.NotFound)
         {
             return NotFound();
         }
 
-        var room = ImageValidator.MaxPhotosPerTool - Tool.Photos.Count;
-        var incoming = NewPhotos.Where(f => f.Length > 0).ToList();
-
-        if (incoming.Count == 0)
+        if (result.Succeeded)
         {
-            TempData["Error"] = "Pick at least one photo to upload.";
-            return RedirectToPage(new { id });
+            TempData["Status"] = "Photos added.";
+        }
+        else
+        {
+            TempData["Error"] = result.Error;
         }
 
-        if (incoming.Count > room)
-        {
-            TempData["Error"] = $"There is only room for {room} more photo(s) on this listing.";
-            return RedirectToPage(new { id });
-        }
-
-        foreach (var file in incoming)
-        {
-            var (photo, error) = await _photos.SaveAsync(file);
-            if (photo is null)
-            {
-                TempData["Error"] = error;
-                return RedirectToPage(new { id });
-            }
-
-            photo.IsPrimary = Tool.Photos.Count == 0;
-            Tool.Photos.Add(photo);
-            await _db.SaveChangesAsync();
-        }
-
-        TempData["Status"] = "Photos added.";
         return RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostMakePrimaryAsync(int id, int photoId)
     {
-        if (!await LoadOwnedAsync(id))
+        var result = await _tools.SetCoverAsync(id, UserId, photoId);
+        if (!result.Succeeded)
         {
             return NotFound();
         }
 
-        var target = Tool.Photos.FirstOrDefault(p => p.Id == photoId);
-        if (target is null)
-        {
-            return NotFound();
-        }
-
-        foreach (var photo in Tool.Photos)
-        {
-            photo.IsPrimary = photo.Id == photoId;
-        }
-
-        await _db.SaveChangesAsync();
         TempData["Status"] = "Cover photo changed.";
         return RedirectToPage(new { id });
     }
 
     public async Task<IActionResult> OnPostDeletePhotoAsync(int id, int photoId)
     {
-        if (!await LoadOwnedAsync(id))
+        var result = await _tools.DeletePhotoAsync(id, UserId, photoId);
+        if (!result.Succeeded)
         {
             return NotFound();
-        }
-
-        var target = Tool.Photos.FirstOrDefault(p => p.Id == photoId);
-        if (target is null)
-        {
-            return NotFound();
-        }
-
-        var wasPrimary = target.IsPrimary;
-        _db.ToolPhotos.Remove(target);
-        await _db.SaveChangesAsync();
-        _photos.Delete(target);
-
-        if (wasPrimary)
-        {
-            var replacement = await _db.ToolPhotos.Where(p => p.ToolId == id).OrderBy(p => p.Id).FirstOrDefaultAsync();
-            if (replacement is not null)
-            {
-                replacement.IsPrimary = true;
-                await _db.SaveChangesAsync();
-            }
         }
 
         TempData["Status"] = "Photo removed.";
@@ -198,18 +148,10 @@ public class EditModel : PageModel
 
     public async Task<IActionResult> OnPostDeleteAsync(int id)
     {
-        if (!await LoadOwnedAsync(id))
+        var result = await _tools.DeleteAsync(id, UserId);
+        if (!result.Succeeded)
         {
             return NotFound();
-        }
-
-        var files = Tool.Photos.ToList();
-        _db.Tools.Remove(Tool);
-        await _db.SaveChangesAsync();
-
-        foreach (var photo in files)
-        {
-            _photos.Delete(photo);
         }
 
         TempData["Status"] = "Listing deleted.";
@@ -219,10 +161,9 @@ public class EditModel : PageModel
     /// <summary>Loads the tool only if the signed-in member owns it — every handler starts here.</summary>
     private async Task<bool> LoadOwnedAsync(int id)
     {
-        var userId = _userManager.GetUserId(User);
         var tool = await _db.Tools
             .Include(t => t.Photos)
-            .FirstOrDefaultAsync(t => t.Id == id && t.OwnerId == userId);
+            .FirstOrDefaultAsync(t => t.Id == id && t.OwnerId == UserId);
 
         if (tool is null)
         {

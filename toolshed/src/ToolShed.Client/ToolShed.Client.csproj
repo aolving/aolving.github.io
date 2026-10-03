@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Everything the apps need to talk to a portal, with no UI in it. Keeping it a plain library
+       means the same code the phones run is exercised against the real server in CI. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>ToolShed.Client</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ToolShed.Contracts\ToolShed.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>
