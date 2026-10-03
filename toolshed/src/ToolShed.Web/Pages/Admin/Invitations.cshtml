@@ -9,7 +9,7 @@
 @if (Model.IssuedLink is not null)
 {
     <div class="notice notice-good">
-        <p>Invitation for <strong>@Model.IssuedEmail</strong>. Send this link to that address now &mdash; it is shown once and cannot be recovered.</p>
+        <p>Invitation for <strong>@Model.IssuedEmail</strong>. @(Model.EmailEnabled ? "It has been emailed, and is shown here once as a backup." : "Send this link to that address now") &mdash; it cannot be recovered afterwards.</p>
         <p><code class="break">@Model.IssuedLink</code></p>
     </div>
 }

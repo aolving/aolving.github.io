@@ -1,0 +1,6 @@
+# GitHub Pages serves this repository as a static site. The Tool Shed is a server
+# application that cannot run there, so keep its source and the CI config out of the build.
+exclude:
+  - toolshed
+  - .github
+  - README.md

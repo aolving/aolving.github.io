@@ -6,6 +6,14 @@
 <h1>Members</h1>
 <p class="muted">Suspending a member ends their sessions and blocks sign-in without deleting their tools or loan history.</p>
 
+@if (Model.ResetLink is not null)
+{
+    <div class="notice notice-good">
+        <p>Password reset link for <strong>@Model.ResetFor</strong>. It works for two hours and is shown once.</p>
+        <p><code class="break">@Model.ResetLink</code></p>
+    </div>
+}
+
 <table class="table">
     <thead>
     <tr>
@@ -14,7 +22,7 @@
         <th>Role</th>
         <th>Joined</th>
         <th>State</th>
-        <th></th>
+        <th>Actions</th>
     </tr>
     </thead>
     <tbody>
@@ -29,12 +37,29 @@
             <td>
                 @if (!member.IsSelf)
                 {
-                    <form method="post" asp-page-handler="Toggle" class="inline-form">
-                        <input type="hidden" name="userId" value="@member.Id" />
-                        <button class="link-button @(member.IsSuspended ? "" : "danger")" type="submit">
-                            @(member.IsSuspended ? "Restore" : "Suspend")
-                        </button>
-                    </form>
+                    <div class="row">
+                        <form method="post" asp-page-handler="Toggle" class="inline-form">
+                            <input type="hidden" name="userId" value="@member.Id" />
+                            <button class="link-button @(member.IsSuspended ? "" : "danger")" type="submit">
+                                @(member.IsSuspended ? "Restore" : "Suspend")
+                            </button>
+                        </form>
+                        <form method="post" asp-page-handler="SetRole" class="inline-form">
+                            <input type="hidden" name="userId" value="@member.Id" />
+                            <input type="hidden" name="role" value="@(member.Role == Roles.Admin ? Roles.Member : Roles.Admin)" />
+                            <button class="link-button" type="submit">
+                                @(member.Role == Roles.Admin ? "Make member" : "Make admin")
+                            </button>
+                        </form>
+                        <form method="post" asp-page-handler="ResetLink" class="inline-form">
+                            <input type="hidden" name="userId" value="@member.Id" />
+                            <button class="link-button" type="submit">Reset password</button>
+                        </form>
+                    </div>
+                }
+                else
+                {
+                    <span class="muted">You</span>
                 }
             </td>
         </tr>

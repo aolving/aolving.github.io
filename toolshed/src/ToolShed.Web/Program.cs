@@ -1,4 +1,6 @@
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Identity;
@@ -49,6 +51,35 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
 });
 
+// Reset links are short lived; a leaked one should not work next week.
+builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
+    options.TokenLifespan = TimeSpan.FromHours(2));
+
+// Cookies, antiforgery tokens and reset tokens are all signed with these keys. Keeping them
+// on disk (next to the database) means a restart or redeploy does not sign everyone out.
+var keysDirectory = builder.Configuration["Storage:KeysDirectory"] ?? "App_Data/keys";
+if (!Path.IsPathRooted(keysDirectory))
+{
+    keysDirectory = Path.Combine(builder.Environment.ContentRootPath, keysDirectory);
+}
+
+builder.Services.AddDataProtection()
+    .SetApplicationName("ToolShed")
+    .PersistKeysToFileSystem(new DirectoryInfo(keysDirectory));
+
+// Opt-in: only trust X-Forwarded-* when the app is reachable solely through your reverse proxy,
+// otherwise anyone could spoof their address and sidestep the rate limiter.
+var behindProxy = builder.Configuration.GetValue<bool>("Hosting:BehindProxy");
+if (behindProxy)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.KnownNetworks.Clear();
+        options.KnownProxies.Clear();
+    });
+}
+
 builder.Services.Configure<SecurityStampValidatorOptions>(options =>
 {
     // A password change or a lockout kicks live sessions out within a minute.
@@ -95,6 +126,8 @@ builder.WebHost.ConfigureKestrel(options =>
     options.Limits.MaxRequestBodySize = maxUploadBytes + 1024 * 1024;
 });
 
+var authPermits = builder.Configuration.GetValue("RateLimits:AuthPermits", 10);
+
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -107,7 +140,7 @@ builder.Services.AddRateLimiter(options =>
         return isCredentialPost
             ? RateLimitPartition.GetFixedWindowLimiter($"auth:{client}", _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 10,
+                PermitLimit = authPermits,
                 Window = TimeSpan.FromMinutes(5),
                 QueueLimit = 0
             })
@@ -130,8 +163,15 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<PhotoStorage>();
 builder.Services.AddScoped<InvitationService>();
 builder.Services.AddScoped<BookingService>();
+builder.Services.AddSingleton<IEmailService, SmtpEmailService>();
+builder.Services.AddScoped<BookingNotifier>();
 
 var app = builder.Build();
+
+if (behindProxy)
+{
+    app.UseForwardedHeaders();
+}
 
 if (app.Environment.IsDevelopment())
 {
@@ -179,3 +219,8 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+// Lets the integration tests host the real application.
+public partial class Program
+{
+}

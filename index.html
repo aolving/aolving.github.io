@@ -3,12 +3,44 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Adam Olving: projects and notes.">
     <title>Adam Olving</title>
     <link rel="stylesheet" href="stylesheet.css">
-    <img src="hello_world.jpeg" alt="Hello World"
 </head>
 <body>
-    <h1>Hello World!</h1>
-    
+    <header class="site-header">
+        <h1>Adam Olving</h1>
+        <p class="lede">Building small, useful things with .NET.</p>
+    </header>
+
+    <main>
+        <section aria-labelledby="projects">
+            <h2 id="projects">Projects</h2>
+
+            <article class="card">
+                <h3>The Tool Shed</h3>
+                <p>
+                    An invite-only portal where a group of neighbours or friends list the tools they own,
+                    post photos of them, and book each other's tools on loan.
+                </p>
+                <ul>
+                    <li><strong>Invite only.</strong> Single-use, expiring, email-bound invitations. There is no public sign-up.</li>
+                    <li><strong>Photos of every tool,</strong> checked by content rather than file name, and shown to members only.</li>
+                    <li><strong>Bookings that cannot collide.</strong> Request, approve or decline, mark returned, with an availability calendar and overdue flags.</li>
+                    <li><strong>Looks after its members.</strong> Roles, suspension, password reset links, optional email notifications.</li>
+                    <li><strong>Easy to host.</strong> ASP.NET Core 8, SQLite, one Docker Compose file with automatic HTTPS.</li>
+                </ul>
+                <p class="note">
+                    The portal is a server application, so it runs on your own machine or host rather than on this page.
+                    The source, setup guide and deployment files are in the
+                    <a href="https://github.com/aolving/aolving.github.io"><code>toolshed/</code> folder of this repository</a>.
+                </p>
+            </article>
+        </section>
+    </main>
+
+    <footer class="site-footer">
+        <p>&copy; Adam Olving</p>
+    </footer>
 </body>
 </html>

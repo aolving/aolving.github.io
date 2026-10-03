@@ -15,18 +15,26 @@ public class InvitationsModel : PageModel
     private readonly InvitationService _invitations;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly TimeProvider _clock;
+    private readonly IEmailService _email;
+    private readonly IConfiguration _configuration;
 
     public InvitationsModel(
         ApplicationDbContext db,
         InvitationService invitations,
         UserManager<ApplicationUser> userManager,
-        TimeProvider clock)
+        TimeProvider clock,
+        IEmailService email,
+        IConfiguration configuration)
     {
         _db = db;
         _invitations = invitations;
         _userManager = userManager;
         _clock = clock;
+        _email = email;
+        _configuration = configuration;
     }
+
+    public bool EmailEnabled => _email.IsConfigured;
 
     [BindProperty]
     public InputModel Input { get; set; } = new();
@@ -90,7 +98,17 @@ public class InvitationsModel : PageModel
 
         TempData["IssuedLink"] = link;
         TempData["IssuedEmail"] = Input.Email.Trim();
-        TempData["Status"] = "Invitation created.";
+
+        var emailed = false;
+        if (_email.IsConfigured)
+        {
+            var portal = _configuration["Portal:Name"] ?? "The Tool Shed";
+            emailed = await _email.SendAsync(Input.Email.Trim(), $"You are invited to {portal}",
+                $"You have been invited to join {portal}, a members-only place to lend and borrow tools.\n\n" +
+                $"Create your account here (the link works once, until {issued.Invitation.ExpiresUtc.ToLocalTime():d MMM yyyy}):\n{link}");
+        }
+
+        TempData["Status"] = emailed ? "Invitation created and emailed." : "Invitation created.";
         return RedirectToPage();
     }
 

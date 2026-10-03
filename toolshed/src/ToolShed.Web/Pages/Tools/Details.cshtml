@@ -39,12 +39,29 @@ else
 }
 
 <section class="card">
-    <h2>Calendar</h2>
-    @if (Model.Held.Count == 0)
-    {
-        <p class="muted">Nothing booked. It is yours for the asking.</p>
-    }
-    else
+    <h2>Next six weeks</h2>
+    <ol class="strip plain-list" aria-label="Availability for the next six weeks">
+        @for (var blank = 0; blank < Model.StripLeadingBlanks; blank++)
+        {
+            <li class="day day-blank" aria-hidden="true"></li>
+        }
+        @foreach (var cell in Model.Strip)
+        {
+            <li class="day day-@cell.State.ToString().ToLowerInvariant()" title="@cell.Date.ToString("ddd d MMM"): @cell.State.ToString().ToLowerInvariant()">
+                <span class="day-number">@cell.Date.Day</span>
+                @if (cell.Date.Day == 1 || cell.Date == Model.Today)
+                {
+                    <span class="day-month">@cell.Date.ToString("MMM")</span>
+                }
+            </li>
+        }
+    </ol>
+    <p class="legend">
+        <span class="pill pill-free">Free</span>
+        <span class="pill pill-alert">Requested</span>
+        <span class="pill pill-busy">Booked</span>
+    </p>
+    @if (Model.Held.Count > 0)
     {
         <ul class="plain-list">
             @foreach (var held in Model.Held)

@@ -61,8 +61,9 @@ public class LoginModel : PageModel
 
         if (result.IsLockedOut)
         {
-            _logger.LogWarning("Account locked out after repeated failures.");
-            ModelState.AddModelError(string.Empty, "Too many failed attempts. Try again in 15 minutes.");
+            // Covers both a lockout after repeated failures and an admin suspension.
+            _logger.LogWarning("Sign-in refused for a locked account.");
+            ModelState.AddModelError(string.Empty, "This account is locked. Try again later, or ask an administrator.");
             return Page();
         }
 

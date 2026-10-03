@@ -47,5 +47,8 @@ public class Booking
     /// <summary>Requested and approved loans both hold the dates; the rest release them.</summary>
     public bool HoldsDates => Status is BookingStatus.Requested or BookingStatus.Approved;
 
+    /// <summary>An approved loan whose last day has passed without the owner marking it returned.</summary>
+    public bool IsOverdueOn(DateOnly today) => Status == BookingStatus.Approved && EndDate < today;
+
     public int Days => EndDate.DayNumber - StartDate.DayNumber + 1;
 }

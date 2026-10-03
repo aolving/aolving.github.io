@@ -1,0 +1,10 @@
+{$PORTAL_DOMAIN} {
+	encode zstd gzip
+
+	# Photo uploads are capped at 6 x 8 MB by the app; allow a little headroom.
+	request_body {
+		max_size 60MB
+	}
+
+	reverse_proxy toolshed:8080
+}

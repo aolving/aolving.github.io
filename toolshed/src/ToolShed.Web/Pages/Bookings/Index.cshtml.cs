@@ -13,13 +13,21 @@ public class IndexModel : PageModel
     private readonly ApplicationDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly BookingService _bookings;
+    private readonly BookingNotifier _notifier;
 
-    public IndexModel(ApplicationDbContext db, UserManager<ApplicationUser> userManager, BookingService bookings)
+    public IndexModel(
+        ApplicationDbContext db,
+        UserManager<ApplicationUser> userManager,
+        BookingService bookings,
+        BookingNotifier notifier)
     {
         _db = db;
         _userManager = userManager;
         _bookings = bookings;
+        _notifier = notifier;
     }
+
+    public DateOnly Today => _bookings.Today;
 
     /// <summary>Requests from other members for tools this member owns.</summary>
     public IReadOnlyList<Booking> Incoming { get; private set; } = [];
@@ -29,17 +37,17 @@ public class IndexModel : PageModel
 
     public async Task OnGetAsync() => await LoadAsync();
 
-    public Task<IActionResult> OnPostApproveAsync(int bookingId) =>
-        ActAsync(userId => _bookings.ApproveAsync(bookingId, userId, null));
+    public Task<IActionResult> OnPostApproveAsync(int bookingId, string? ownerNote) =>
+        ActAsync(BookingEvent.Approved, userId => _bookings.ApproveAsync(bookingId, userId, CleanNote(ownerNote)));
 
-    public Task<IActionResult> OnPostDeclineAsync(int bookingId) =>
-        ActAsync(userId => _bookings.DeclineAsync(bookingId, userId, null));
+    public Task<IActionResult> OnPostDeclineAsync(int bookingId, string? ownerNote) =>
+        ActAsync(BookingEvent.Declined, userId => _bookings.DeclineAsync(bookingId, userId, CleanNote(ownerNote)));
 
     public Task<IActionResult> OnPostReturnedAsync(int bookingId) =>
-        ActAsync(userId => _bookings.MarkReturnedAsync(bookingId, userId));
+        ActAsync(BookingEvent.Returned, userId => _bookings.MarkReturnedAsync(bookingId, userId));
 
     public Task<IActionResult> OnPostCancelAsync(int bookingId) =>
-        ActAsync(userId => _bookings.CancelAsync(bookingId, userId));
+        ActAsync(BookingEvent.Cancelled, userId => _bookings.CancelAsync(bookingId, userId));
 
     public string PillClass(BookingStatus status) => status switch
     {
@@ -49,7 +57,18 @@ public class IndexModel : PageModel
         _ => "pill-busy"
     };
 
-    private async Task<IActionResult> ActAsync(Func<string, Task<BookingResult>> action)
+    private static string? CleanNote(string? note)
+    {
+        var trimmed = note?.Trim();
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return null;
+        }
+
+        return trimmed.Length > 1000 ? trimmed[..1000] : trimmed;
+    }
+
+    private async Task<IActionResult> ActAsync(BookingEvent bookingEvent, Func<string, Task<BookingResult>> action)
     {
         var userId = _userManager.GetUserId(User)!;
         var result = await action(userId);
@@ -57,6 +76,8 @@ public class IndexModel : PageModel
         if (result.Succeeded)
         {
             TempData["Status"] = "Done.";
+            var loansUrl = Url.Page("/Bookings/Index", pageHandler: null, values: null, protocol: Request.Scheme)!;
+            await _notifier.NotifyAsync(result.Booking!.Id, bookingEvent, userId, loansUrl);
         }
         else
         {

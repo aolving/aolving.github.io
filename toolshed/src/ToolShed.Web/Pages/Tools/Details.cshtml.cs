@@ -14,12 +14,52 @@ public class DetailsModel : PageModel
     private readonly ApplicationDbContext _db;
     private readonly UserManager<ApplicationUser> _userManager;
     private readonly BookingService _bookings;
+    private readonly BookingNotifier _notifier;
 
-    public DetailsModel(ApplicationDbContext db, UserManager<ApplicationUser> userManager, BookingService bookings)
+    public DetailsModel(
+        ApplicationDbContext db,
+        UserManager<ApplicationUser> userManager,
+        BookingService bookings,
+        BookingNotifier notifier)
     {
         _db = db;
         _userManager = userManager;
         _bookings = bookings;
+        _notifier = notifier;
+    }
+
+    /// <summary>How many days the availability strip covers.</summary>
+    public const int StripDays = 42;
+
+    public enum DayState
+    {
+        Free,
+        Requested,
+        Booked
+    }
+
+    public record DayCell(DateOnly Date, DayState State);
+
+    /// <summary>Blank cells so the first day lands under the right weekday (weeks start on Monday).</summary>
+    public int StripLeadingBlanks => ((int)Today.DayOfWeek + 6) % 7;
+
+    public IReadOnlyList<DayCell> Strip
+    {
+        get
+        {
+            var cells = new List<DayCell>(StripDays);
+            for (var offset = 0; offset < StripDays; offset++)
+            {
+                var day = Today.AddDays(offset);
+                var covering = Held.Where(b => b.StartDate <= day && day <= b.EndDate).ToList();
+                var state = covering.Any(b => b.Status == BookingStatus.Approved)
+                    ? DayState.Booked
+                    : covering.Count > 0 ? DayState.Requested : DayState.Free;
+                cells.Add(new DayCell(day, state));
+            }
+
+            return cells;
+        }
     }
 
     public Tool Tool { get; private set; } = null!;
@@ -88,6 +128,9 @@ public class DetailsModel : PageModel
             Held = await _bookings.HeldRangesAsync(id);
             return Page();
         }
+
+        var loansUrl = Url.Page("/Bookings/Index", pageHandler: null, values: null, protocol: Request.Scheme)!;
+        await _notifier.NotifyAsync(result.Booking!.Id, BookingEvent.Requested, borrowerId, loansUrl);
 
         TempData["Status"] = "Request sent. The owner will see it under Loans.";
         return RedirectToPage("/Bookings/Index");

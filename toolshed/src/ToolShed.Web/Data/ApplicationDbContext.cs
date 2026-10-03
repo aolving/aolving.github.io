@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ToolShed.Web.Models;
 
 namespace ToolShed.Web.Data;
@@ -17,6 +18,16 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
     public DbSet<Booking> Bookings => Set<Booking>();
 
     public DbSet<Invitation> Invitations => Set<Invitation>();
+
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        base.ConfigureConventions(configurationBuilder);
+
+        // SQLite stores DateTimeOffset as text and the provider refuses to ORDER BY it.
+        // Persisting UTC ticks keeps ordering and comparisons correct in the database.
+        configurationBuilder.Properties<DateTimeOffset>().HaveConversion<UtcTicksConverter>();
+        configurationBuilder.Properties<DateTimeOffset?>().HaveConversion<UtcTicksConverter>();
+    }
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -73,5 +84,14 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             entity.HasIndex(i => i.TokenHash).IsUnique();
             entity.HasIndex(i => i.Email);
         });
+    }
+}
+
+/// <summary>Stores a DateTimeOffset as its UTC tick count. Every timestamp in the portal is UTC.</summary>
+public class UtcTicksConverter : ValueConverter<DateTimeOffset, long>
+{
+    public UtcTicksConverter()
+        : base(value => value.UtcTicks, ticks => new DateTimeOffset(ticks, TimeSpan.Zero))
+    {
     }
 }

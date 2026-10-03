@@ -212,3 +212,28 @@ button.danger, .button.danger { background: var(--bad); }
     clip: rect(0 0 0 0);
     white-space: nowrap;
 }
+
+.strip {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 4px;
+    max-width: 28rem;
+}
+
+.day {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    padding: 0.2rem 0.3rem;
+    font-size: 0.8rem;
+}
+
+.day-blank { border: none; }
+.day-free { color: var(--good); }
+.day-requested { color: var(--alert); background: color-mix(in srgb, var(--alert) 14%, transparent); }
+.day-booked { color: var(--bad); background: color-mix(in srgb, var(--bad) 16%, transparent); }
+.day-number { color: var(--ink); font-weight: 600; }
+.day-month { position: absolute; right: 0.3rem; bottom: 0.15rem; font-size: 0.65rem; color: var(--ink-soft); }
+
+.legend { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 1rem; }
