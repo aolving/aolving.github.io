@@ -18,9 +18,8 @@ public static class DatabaseInitializer
 
         EnsureDatabaseDirectoryExists(db.Database.GetConnectionString());
 
-        // Swap for db.Database.MigrateAsync() once you have added EF Core migrations
-        // (see toolshed/README.md, "Moving to EF Core migrations").
-        await db.Database.EnsureCreatedAsync();
+        // Creates the database on first run and applies any newer migrations on later ones.
+        await db.Database.MigrateAsync();
 
         var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
         foreach (var role in Roles.All)
