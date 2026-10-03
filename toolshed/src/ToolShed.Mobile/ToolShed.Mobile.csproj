@@ -23,13 +23,20 @@
     <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-ios'))">15.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-android'))">24.0</SupportedOSPlatformVersion>
 
-    <!-- Screens bind to view-model properties by name at runtime. The trimmer cannot see those
-         references, so keep it off rather than ship an app that loses text after a release build. -->
+  </PropertyGroup>
+
+  <!-- Screens bind to view-model properties by name at runtime. The trimmer cannot see those
+       references, so trimming stays off rather than shipping an app that loses text after a release
+       build. Each platform spells "off" differently, and Android's ahead-of-time compiler needs
+       trimming, so that is off too. -->
+  <PropertyGroup Condition="$(TargetFramework.Contains('-android'))">
     <PublishTrimmed>false</PublishTrimmed>
-    <AndroidLinkMode>None</AndroidLinkMode>
+    <RunAOTCompilation>false</RunAOTCompilation>
+    <AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
   </PropertyGroup>
 
   <PropertyGroup Condition="$(TargetFramework.Contains('-ios'))">
+    <MtouchLink>None</MtouchLink>
     <CodesignEntitlements>Platforms/iOS/Entitlements.plist</CodesignEntitlements>
   </PropertyGroup>
 
@@ -37,6 +44,10 @@
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#8A4B1E" />
     <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#8A4B1E" BaseSize="128,128" />
     <MauiImage Include="Resources\Images\*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.110" />
   </ItemGroup>
 
   <ItemGroup>
