@@ -3,8 +3,8 @@ using System.ComponentModel.DataAnnotations;
 namespace ToolShed.Web.Models;
 
 /// <summary>
-/// A single-use, expiring, email-bound invitation. Only the SHA-256 hash of the
-/// token is stored, so a database leak does not hand out portal access.
+/// A single-use, expiring invitation for one email address. Joining needs that address plus the
+/// six-digit access code issued with the invitation. The code is stored only as a keyed hash.
 /// </summary>
 public class Invitation
 {
@@ -14,9 +14,9 @@ public class Invitation
     [Required]
     public string Email { get; set; } = string.Empty;
 
-    /// <summary>Hex-encoded SHA-256 of the invitation token.</summary>
+    /// <summary>Keyed hash (HMAC-SHA256, hex) of the six-digit access code. Unique across all invitations.</summary>
     [Required]
-    public string TokenHash { get; set; } = string.Empty;
+    public string CodeHash { get; set; } = string.Empty;
 
     /// <summary>Role granted on redemption. Restricted to <see cref="Roles"/>.</summary>
     [Required]
@@ -36,11 +36,19 @@ public class Invitation
 
     public DateTimeOffset? RevokedUtc { get; set; }
 
+    /// <summary>Wrong codes tried against this invitation. Slows guessing, and ends it past a limit.</summary>
+    public int FailedAttempts { get; set; }
+
+    /// <summary>While set and in the future, codes are not even checked.</summary>
+    public DateTimeOffset? LockedUntilUtc { get; set; }
+
     public bool IsRedeemed => RedeemedUtc is not null;
 
     public bool IsRevoked => RevokedUtc is not null;
 
     public bool IsExpiredAt(DateTimeOffset now) => ExpiresUtc <= now;
+
+    public bool IsLockedAt(DateTimeOffset now) => LockedUntilUtc is DateTimeOffset until && until > now;
 
     public bool IsUsableAt(DateTimeOffset now) => !IsRedeemed && !IsRevoked && !IsExpiredAt(now);
 }

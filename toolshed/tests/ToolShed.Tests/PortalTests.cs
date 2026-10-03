@@ -34,8 +34,13 @@ public class PortalTests
 
     private static string UniqueEmail(string label) => $"{label}-{Guid.NewGuid():N}@example.test";
 
-    /// <summary>Issues an invitation as the admin and returns the sign-up link (path and query).</summary>
-    private static async Task<string> InviteAsync(HttpClient admin, string email, string role = "Member")
+    private static readonly Regex IssuedCode = new("id=\"issued-code\">([0-9 ]+)<", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Issues an invitation as the admin, as a person would from the Invitations page, and returns the
+    /// sign-up link (path and query) together with the six-digit access code shown beside it.
+    /// </summary>
+    private static async Task<(string Link, string Code)> InviteAsync(HttpClient admin, string email, string role = "Member")
     {
         var response = await admin.PostFormAsync("/Admin/Invitations", "/Admin/Invitations?handler=Issue",
         [
@@ -45,34 +50,42 @@ public class PortalTests
         ]);
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
 
-        // The link is shown once, on the very next page view.
+        // The code and link are shown once, on the very next page view.
         var html = await admin.GetHtmlAsync("/Admin/Invitations");
-        var match = CodeBlock.Match(html);
-        Assert.True(match.Success, "The invitation link was not shown to the admin.");
-        return new Uri(WebUtility.HtmlDecode(match.Groups[1].Value.Trim())).PathAndQuery;
+        var code = IssuedCode.Match(html);
+        Assert.True(code.Success, "The access code was not shown to the admin.");
+        var link = CodeBlock.Match(html);
+        Assert.True(link.Success, "The invitation link was not shown to the admin.");
+
+        return (new Uri(WebUtility.HtmlDecode(link.Groups[1].Value.Trim())).PathAndQuery, code.Groups[1].Value.Replace(" ", string.Empty));
     }
 
-    private static async Task RegisterAsync(HttpClient client, string registerUrl, string displayName = "Test Member")
+    private static Task<HttpResponseMessage> TryRegisterAsync(
+        HttpClient client, string email, string code, string displayName = "Test Member", string? password = null)
     {
-        var token = HttpUtility.ParseQueryString(new Uri("https://localhost" + registerUrl).Query)["token"]!;
-
-        var response = await client.PostFormAsync(registerUrl, registerUrl,
+        password ??= PortalFactory.MemberPassword;
+        return client.PostFormAsync("/Account/Register", "/Account/Register",
         [
-            new("Token", token),
+            new("Input.Email", email),
+            new("Input.AccessCode", code),
             new("Input.DisplayName", displayName),
-            new("Input.Password", PortalFactory.MemberPassword),
-            new("Input.ConfirmPassword", PortalFactory.MemberPassword)
+            new("Input.Password", password),
+            new("Input.ConfirmPassword", password)
         ]);
+    }
 
+    private static async Task RegisterAsync(HttpClient client, string email, string code, string displayName = "Test Member")
+    {
+        var response = await TryRegisterAsync(client, email, code, displayName);
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
     }
 
     private async Task<(HttpClient Client, string Email)> NewMemberAsync(HttpClient admin, string label)
     {
         var email = UniqueEmail(label);
-        var link = await InviteAsync(admin, email);
+        var (_, code) = await InviteAsync(admin, email);
         var client = _factory.NewClient();
-        await RegisterAsync(client, link, label);
+        await RegisterAsync(client, email, code, label);
         return (client, email);
     }
 
@@ -151,29 +164,61 @@ public class PortalTests
     }
 
     [Fact]
-    public async Task Registration_without_a_live_invitation_is_refused()
+    public async Task The_registration_form_asks_for_email_password_and_a_six_digit_access_code()
+    {
+        var html = await _factory.NewClient().GetHtmlAsync("/Account/Register");
+
+        Assert.Contains("name=\"Input.Email\"", html);
+        Assert.Contains("name=\"Input.AccessCode\"", html);
+        Assert.Contains("name=\"Input.Password\"", html);
+        Assert.Contains("name=\"Input.ConfirmPassword\"", html);
+        Assert.Contains("six-digit", html);
+    }
+
+    [Fact]
+    public async Task The_invitation_link_fills_in_the_email_but_never_the_code()
+    {
+        var admin = await AdminAsync();
+        var email = UniqueEmail("prefill");
+        var (link, code) = await InviteAsync(admin, email);
+
+        var html = await _factory.NewClient().GetHtmlAsync(link);
+
+        Assert.Contains($"value=\"{email}\"", html);
+
+        // The link names only the address. The code field is empty, and no code travels in the URL.
+        Assert.DoesNotContain("code=", link);
+        var codeInput = Regex.Match(html, "<input[^>]*name=\"Input.AccessCode\"[^>]*>").Value;
+        Assert.NotEmpty(codeInput);
+        Assert.DoesNotContain("value=", codeInput);
+    }
+
+    [Fact]
+    public async Task Registration_without_a_valid_email_and_code_pair_is_refused()
     {
         var client = _factory.NewClient();
-
-        var bare = await client.GetHtmlAsync("/Account/Register");
-        var bogus = await client.GetHtmlAsync("/Account/Register?token=not-a-real-token");
-        Assert.Contains("not valid", bare);
-        Assert.Contains("not valid", bogus);
-        Assert.DoesNotContain("Create my account", bogus);
-
-        // Posting straight at the endpoint must not mint an account either.
         var email = UniqueEmail("sneaky");
-        var response = await client.PostFormAsync("/Account/Login", "/Account/Register?token=not-a-real-token",
-        [
-            new("Token", "not-a-real-token"),
-            new("Input.DisplayName", "Sneaky"),
-            new("Input.Password", PortalFactory.MemberPassword),
-            new("Input.ConfirmPassword", PortalFactory.MemberPassword)
-        ]);
 
+        // No invitation at all, and a made-up code.
+        var response = await TryRegisterAsync(client, email, "123456", "Sneaky");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("not valid", await response.Content.ReadAsStringAsync());
+        Assert.Contains("do not match a valid invitation", await response.Content.ReadAsStringAsync());
         Assert.Null(await FindUserAsync(email));
+    }
+
+    [Fact]
+    public async Task A_missing_or_malformed_access_code_is_refused_and_creates_nothing()
+    {
+        var admin = await AdminAsync();
+        var email = UniqueEmail("malformed");
+        await InviteAsync(admin, email);
+
+        foreach (var bad in new[] { "", "12345", "1234567", "abcdef", "12 34 5x" })
+        {
+            var response = await TryRegisterAsync(_factory.NewClient(), email, bad);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Null(await FindUserAsync(email));
+        }
     }
 
     [Fact]
@@ -212,20 +257,36 @@ public class PortalTests
         }
     }
 
-    // ---------- invitations ----------
+    // ---------- invitations and access codes ----------
+
+    [Fact]
+    public async Task The_admin_is_shown_a_unique_six_digit_code_with_every_invitation()
+    {
+        var admin = await AdminAsync();
+
+        var codes = new HashSet<string>();
+        for (var i = 0; i < 12; i++)
+        {
+            var (_, code) = await InviteAsync(admin, UniqueEmail($"unique{i}"));
+            Assert.Matches("^[0-9]{6}$", code);
+            Assert.True(codes.Add(code), $"code {code} was issued twice");
+        }
+    }
 
     [Fact]
     public async Task An_invitation_works_once_and_a_member_is_not_an_admin()
     {
         var admin = await AdminAsync();
         var email = UniqueEmail("newcomer");
-        var link = await InviteAsync(admin, email);
+        var (_, code) = await InviteAsync(admin, email);
 
         var member = _factory.NewClient();
-        await RegisterAsync(member, link, "Newcomer");
+        await RegisterAsync(member, email, code, "Newcomer");
 
-        // Spent: the same link now leads nowhere.
-        Assert.Contains("not valid", await _factory.NewClient().GetHtmlAsync(link));
+        // Spent: the same email and code now lead nowhere.
+        var again = await TryRegisterAsync(_factory.NewClient(), email, code, "Newcomer Again");
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+        Assert.Contains("do not match a valid invitation", await again.Content.ReadAsStringAsync());
 
         // Signed in straight away, but only as a member.
         await member.GetHtmlAsync("/");
@@ -235,6 +296,124 @@ public class PortalTests
 
         Assert.True(await IsInRoleAsync(email, "Member"));
         Assert.False(await IsInRoleAsync(email, "Admin"));
+    }
+
+    [Fact]
+    public async Task The_member_signs_in_afterwards_with_the_password_they_chose()
+    {
+        var admin = await AdminAsync();
+        var email = UniqueEmail("chooser");
+        var (_, code) = await InviteAsync(admin, email);
+        const string chosen = "My-Very-Own-Passphrase-31!";
+
+        var response = await TryRegisterAsync(_factory.NewClient(), email, code, "Chooser", chosen);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+
+        await _factory.NewClient().SignInAsync(email, chosen);
+    }
+
+    [Fact]
+    public async Task The_code_works_only_with_the_email_it_was_issued_for()
+    {
+        var admin = await AdminAsync();
+        var alice = UniqueEmail("alice");
+        var bob = UniqueEmail("bob");
+        var (_, aliceCode) = await InviteAsync(admin, alice);
+        var (_, bobCode) = await InviteAsync(admin, bob);
+
+        // Alice's code with Bob's address, and the other way round: both refused.
+        var swapped = await TryRegisterAsync(_factory.NewClient(), bob, aliceCode, "Mallory");
+        Assert.Equal(HttpStatusCode.OK, swapped.StatusCode);
+        Assert.Null(await FindUserAsync(bob));
+
+        // Each still works for its owner.
+        await RegisterAsync(_factory.NewClient(), alice, aliceCode, "Alice");
+        await RegisterAsync(_factory.NewClient(), bob, bobCode, "Bob");
+    }
+
+    [Fact]
+    public async Task The_code_and_email_are_accepted_however_they_are_typed()
+    {
+        var admin = await AdminAsync();
+        var email = UniqueEmail("typing");
+        var (_, code) = await InviteAsync(admin, email);
+
+        await RegisterAsync(_factory.NewClient(), email.ToUpperInvariant(), $"{code[..3]} {code[3..]}", "Typist");
+    }
+
+    [Fact]
+    public async Task Every_kind_of_failure_gets_the_same_answer()
+    {
+        var admin = await AdminAsync();
+        var email = UniqueEmail("uniform");
+        var (_, code) = await InviteAsync(admin, email);
+        var wrong = code == "000000" ? "000001" : "000000";
+
+        async Task<string> Attempt(string e, string c)
+        {
+            var response = await TryRegisterAsync(_factory.NewClient(), e, c);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var html = await response.Content.ReadAsStringAsync();
+            var start = html.IndexOf("do not match", StringComparison.Ordinal);
+            Assert.True(start >= 0, "no failure message shown");
+            return html.Substring(start, 60);
+        }
+
+        var wrongCode = await Attempt(email, wrong);
+        var unknownAddress = await Attempt(UniqueEmail("nobody"), code);
+        var wrongBoth = await Attempt(UniqueEmail("nobody"), wrong);
+
+        Assert.Equal(wrongCode, unknownAddress);
+        Assert.Equal(wrongCode, wrongBoth);
+    }
+
+    [Fact]
+    public async Task Guessing_codes_locks_the_invitation_even_against_the_right_code()
+    {
+        var admin = await AdminAsync();
+        var email = UniqueEmail("guessed");
+        var (_, code) = await InviteAsync(admin, email);
+        var wrong = code == "000000" ? "000001" : "000000";
+
+        for (var i = 0; i < 5; i++)
+        {
+            await TryRegisterAsync(_factory.NewClient(), email, wrong);
+        }
+
+        // The real code is turned away while the pause lasts.
+        var response = await TryRegisterAsync(_factory.NewClient(), email, code);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Null(await FindUserAsync(email));
+    }
+
+    [Fact]
+    public async Task A_weak_password_does_not_use_up_the_invitation()
+    {
+        var admin = await AdminAsync();
+        var email = UniqueEmail("weakpw");
+        var (_, code) = await InviteAsync(admin, email);
+
+        var weak = await TryRegisterAsync(_factory.NewClient(), email, code, "Weak", "short");
+        Assert.Equal(HttpStatusCode.OK, weak.StatusCode);
+        Assert.Null(await FindUserAsync(email));
+
+        await RegisterAsync(_factory.NewClient(), email, code, "Weak");
+    }
+
+    [Fact]
+    public async Task The_code_is_stored_only_as_a_keyed_hash()
+    {
+        var admin = await AdminAsync();
+        var email = UniqueEmail("hashed");
+        var (_, code) = await InviteAsync(admin, email);
+
+        using var scope = _factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ToolShed.Web.Data.ApplicationDbContext>();
+        var stored = db.Invitations.Single(i => i.Email == email.ToUpperInvariant());
+
+        Assert.NotEqual(code, stored.CodeHash);
+        Assert.DoesNotContain(code, stored.CodeHash);
+        Assert.Equal(64, stored.CodeHash.Length);
     }
 
     [Fact]
@@ -259,7 +438,7 @@ public class PortalTests
     {
         var admin = await AdminAsync();
         var email = UniqueEmail("revoked");
-        var link = await InviteAsync(admin, email);
+        var (_, code) = await InviteAsync(admin, email);
 
         var list = await admin.GetHtmlAsync("/Admin/Invitations");
         var id = Regex.Match(list, "name=\"invitationId\" value=\"(\\d+)\"").Groups[1].Value;
@@ -268,20 +447,26 @@ public class PortalTests
         var revoke = await admin.PostFormAsync("/Admin/Invitations", "/Admin/Invitations?handler=Revoke", [new("invitationId", id)]);
         Assert.Equal(HttpStatusCode.Redirect, revoke.StatusCode);
 
-        Assert.Contains("not valid", await _factory.NewClient().GetHtmlAsync(link));
+        var response = await TryRegisterAsync(_factory.NewClient(), email, code);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Null(await FindUserAsync(email));
     }
 
     [Fact]
-    public async Task Re_inviting_an_address_retires_the_earlier_link()
+    public async Task Re_inviting_an_address_retires_the_earlier_code()
     {
         var admin = await AdminAsync();
         var email = UniqueEmail("twice");
 
-        var first = await InviteAsync(admin, email);
-        var second = await InviteAsync(admin, email);
+        var (_, first) = await InviteAsync(admin, email);
+        var (_, second) = await InviteAsync(admin, email);
+        Assert.NotEqual(first, second);
 
-        Assert.Contains("not valid", await _factory.NewClient().GetHtmlAsync(first));
-        Assert.DoesNotContain("not valid", await _factory.NewClient().GetHtmlAsync(second));
+        var stale = await TryRegisterAsync(_factory.NewClient(), email, first);
+        Assert.Equal(HttpStatusCode.OK, stale.StatusCode);
+        Assert.Null(await FindUserAsync(email));
+
+        await RegisterAsync(_factory.NewClient(), email, second);
     }
 
     // ---------- tools, photos and loans ----------

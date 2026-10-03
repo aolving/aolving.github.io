@@ -3,16 +3,19 @@
                 xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
                 xmlns:pages="clr-namespace:ToolShed.Mobile.Pages"
                 x:Class="ToolShed.Mobile.Pages.InvitePage"
-                Title="Accept an invitation">
+                Title="Create your account">
     <ScrollView>
         <VerticalStackLayout Padding="24" Spacing="10">
-            <Label Text="Paste the invitation link you were sent, then choose a name and password." TextColor="{StaticResource Muted}" />
-
-            <Label Text="Invitation link" FontAttributes="Bold" />
-            <Entry x:Name="LinkEntry" Placeholder="https://tools.example.com/Account/Register?token=..." Keyboard="Url" TextChanged="OnLinkChanged" />
+            <Label Text="You need the email address you were invited with and the six-digit access code your administrator gave you." TextColor="{StaticResource Muted}" />
 
             <Label Text="Portal address" FontAttributes="Bold" />
             <Entry x:Name="ServerEntry" Placeholder="tools.example.com" Keyboard="Url" />
+
+            <Label Text="Email" FontAttributes="Bold" />
+            <Entry x:Name="EmailEntry" Keyboard="Email" />
+
+            <Label Text="Access code" FontAttributes="Bold" />
+            <Entry x:Name="CodeEntry" Placeholder="123 456" Keyboard="Numeric" MaxLength="7" />
 
             <Label Text="Your name" FontAttributes="Bold" />
             <Entry x:Name="NameEntry" />
@@ -20,7 +23,7 @@
             <Label Text="Rough area (optional)" FontAttributes="Bold" />
             <Entry x:Name="LocationEntry" />
 
-            <Label Text="Password" FontAttributes="Bold" />
+            <Label Text="Choose a password" FontAttributes="Bold" />
             <Entry x:Name="PasswordEntry" IsPassword="True" />
             <Label Text="At least 12 characters, with upper and lower case, a digit and a symbol." FontSize="12" TextColor="{StaticResource Muted}" />
 

@@ -94,7 +94,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
                 .HasForeignKey(i => i.CreatedById)
                 .OnDelete(DeleteBehavior.SetNull);
 
-            entity.HasIndex(i => i.TokenHash).IsUnique();
+            // Each access code belongs to exactly one invitation, ever.
+            entity.HasIndex(i => i.CodeHash).IsUnique();
             entity.HasIndex(i => i.Email);
         });
     }

@@ -42,11 +42,12 @@ public sealed class PortalClient
         return response;
     }
 
+    /// <summary>Creates an account. The access code can be typed as "123 456", "123-456" or "123456".</summary>
     public async Task<AuthResponse> RegisterAsync(
-        string invitationToken, string displayName, string password, string? location, string? deviceName, CancellationToken ct = default)
+        string email, string accessCode, string displayName, string password, string? location, string? deviceName, CancellationToken ct = default)
     {
         var response = await SendAsync<AuthResponse>(HttpMethod.Post, "api/v1/auth/register",
-            new RegisterRequest(invitationToken, displayName, password, location, deviceName), ct);
+            new RegisterRequest(email, accessCode, displayName, password, location, deviceName), ct);
         Token = response.Token;
         return response;
     }

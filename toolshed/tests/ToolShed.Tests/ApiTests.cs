@@ -34,21 +34,21 @@ public class ApiTests
         return client;
     }
 
-    /// <summary>Issues an invitation straight from the service, as an admin would from the website.</summary>
-    private async Task<string> InvitationTokenAsync(string email)
+    /// <summary>Issues an invitation straight from the service, as an admin would from the website, and returns its access code.</summary>
+    private async Task<string> AccessCodeAsync(string email)
     {
         using var scope = _factory.Services.CreateScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
         var admin = (await users.FindByEmailAsync(PortalFactory.AdminEmail))!;
         var invitations = scope.ServiceProvider.GetRequiredService<InvitationService>();
-        return (await invitations.IssueAsync(email, Roles.Member, 7, admin.Id)).Token;
+        return (await invitations.IssueAsync(email, Roles.Member, 7, admin.Id)).Code;
     }
 
     private async Task<(PortalClient Client, string Email)> NewMemberAsync(string label)
     {
         var email = $"{label}-{Guid.NewGuid():N}@example.test";
         var client = NewClient();
-        await client.RegisterAsync(await InvitationTokenAsync(email), label, PortalFactory.MemberPassword, "Testville", "tests");
+        await client.RegisterAsync(email, await AccessCodeAsync(email), label, PortalFactory.MemberPassword, "Testville", "tests");
         return (client, email);
     }
 
@@ -134,43 +134,94 @@ public class ApiTests
     }
 
     [Fact]
-    public async Task An_invitation_can_be_redeemed_from_the_app_exactly_once()
+    public async Task An_account_is_created_from_the_app_with_email_password_and_access_code()
     {
         var email = $"app-{Guid.NewGuid():N}@example.test";
-        var invitation = await InvitationTokenAsync(email);
+        var code = await AccessCodeAsync(email);
 
         var client = NewClient();
-        var auth = await client.RegisterAsync(invitation, "App Member", PortalFactory.MemberPassword, null, "tests");
+        var auth = await client.RegisterAsync(email, code, "App Member", PortalFactory.MemberPassword, null, "tests");
 
         Assert.Equal(email, auth.User.Email, ignoreCase: true);
         Assert.False(auth.User.IsAdmin);
         Assert.Equal(email, (await client.GetMeAsync()).Email, ignoreCase: true);
 
-        var again = await ExpectFailureAsync(() => NewClient().RegisterAsync(invitation, "Someone Else", PortalFactory.MemberPassword, null, "tests"));
-        Assert.Equal(HttpStatusCode.BadRequest, again.StatusCode);
-        Assert.Contains("not valid", again.Message);
+        // And the chosen password works for signing in afterwards.
+        await NewClient().LoginAsync(email, PortalFactory.MemberPassword, "second phone");
     }
 
     [Fact]
-    public async Task A_made_up_invitation_is_refused()
+    public async Task The_access_code_works_once_and_only_with_its_own_email()
     {
-        var failure = await ExpectFailureAsync(() => NewClient().RegisterAsync(
-            "made-up-token-made-up-token-made-up", "Sneaky", PortalFactory.MemberPassword, null, "tests"));
+        var email = $"once-{Guid.NewGuid():N}@example.test";
+        var other = $"other-{Guid.NewGuid():N}@example.test";
+        var code = await AccessCodeAsync(email);
+        await AccessCodeAsync(other);
 
-        Assert.Equal(HttpStatusCode.BadRequest, failure.StatusCode);
+        var wrongEmail = await ExpectFailureAsync(() => NewClient().RegisterAsync(other, code, "Mallory", PortalFactory.MemberPassword, null, "tests"));
+        Assert.Equal(HttpStatusCode.BadRequest, wrongEmail.StatusCode);
+
+        await NewClient().RegisterAsync(email, code, "First", PortalFactory.MemberPassword, null, "tests");
+
+        var again = await ExpectFailureAsync(() => NewClient().RegisterAsync(email, code, "Second", PortalFactory.MemberPassword, null, "tests"));
+        Assert.Equal(HttpStatusCode.BadRequest, again.StatusCode);
+        Assert.Contains("do not match a valid invitation", again.Message);
+    }
+
+    [Fact]
+    public async Task A_made_up_code_is_refused_and_every_failure_reads_the_same()
+    {
+        var email = $"fail-{Guid.NewGuid():N}@example.test";
+        var code = await AccessCodeAsync(email);
+        var wrong = code == "000000" ? "000001" : "000000";
+
+        var wrongCode = await ExpectFailureAsync(() => NewClient().RegisterAsync(email, wrong, "Sneaky", PortalFactory.MemberPassword, null, "tests"));
+        var unknownEmail = await ExpectFailureAsync(() => NewClient().RegisterAsync($"nobody-{Guid.NewGuid():N}@example.test", code, "Sneaky", PortalFactory.MemberPassword, null, "tests"));
+        var malformed = await ExpectFailureAsync(() => NewClient().RegisterAsync(email, "12ab56", "Sneaky", PortalFactory.MemberPassword, null, "tests"));
+
+        Assert.Equal(HttpStatusCode.BadRequest, wrongCode.StatusCode);
+        Assert.Equal(wrongCode.Message, unknownEmail.Message);
+        Assert.Equal(wrongCode.Message, malformed.Message);
+    }
+
+    [Fact]
+    public async Task The_access_code_may_be_typed_with_a_space_or_a_dash()
+    {
+        var email = $"typed-{Guid.NewGuid():N}@example.test";
+        var code = await AccessCodeAsync(email);
+
+        var auth = await NewClient().RegisterAsync(email.ToUpperInvariant(), $"{code[..3]}-{code[3..]}", "Typist", PortalFactory.MemberPassword, null, "tests");
+        Assert.Equal(email, auth.User.Email, ignoreCase: true);
+    }
+
+    [Fact]
+    public async Task Guessing_codes_from_the_app_locks_the_invitation()
+    {
+        var email = $"guess-{Guid.NewGuid():N}@example.test";
+        var code = await AccessCodeAsync(email);
+        var wrong = code == "000000" ? "000001" : "000000";
+
+        for (var i = 0; i < InvitationService.LockAfterFailures; i++)
+        {
+            await ExpectFailureAsync(() => NewClient().RegisterAsync(email, wrong, "Guesser", PortalFactory.MemberPassword, null, "tests"));
+        }
+
+        // Even the real code is turned away while the pause lasts.
+        var locked = await ExpectFailureAsync(() => NewClient().RegisterAsync(email, code, "Owner", PortalFactory.MemberPassword, null, "tests"));
+        Assert.Equal(HttpStatusCode.BadRequest, locked.StatusCode);
     }
 
     [Fact]
     public async Task A_weak_password_is_refused_on_registration_and_the_invitation_survives()
     {
         var email = $"weak-{Guid.NewGuid():N}@example.test";
-        var invitation = await InvitationTokenAsync(email);
+        var code = await AccessCodeAsync(email);
 
-        var failure = await ExpectFailureAsync(() => NewClient().RegisterAsync(invitation, "Weak", "short", null, "tests"));
+        var failure = await ExpectFailureAsync(() => NewClient().RegisterAsync(email, code, "Weak", "short", null, "tests"));
         Assert.Equal(HttpStatusCode.BadRequest, failure.StatusCode);
 
         // The failed attempt did not burn the invitation.
-        await NewClient().RegisterAsync(invitation, "Weak", PortalFactory.MemberPassword, null, "tests");
+        await NewClient().RegisterAsync(email, code, "Weak", PortalFactory.MemberPassword, null, "tests");
     }
 
     [Fact]

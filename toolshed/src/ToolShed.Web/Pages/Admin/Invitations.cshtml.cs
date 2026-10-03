@@ -44,12 +44,14 @@ public class InvitationsModel : PageModel
     public DateTimeOffset Now => _clock.GetUtcNow();
 
     /// <summary>
-    /// Carried in TempData rather than the database: the token is never stored in
-    /// the clear, so this is the only moment the link exists.
+    /// Carried in TempData rather than the database: the code is stored only as a hash, so this is the
+    /// one moment it can be shown.
     /// </summary>
     public string? IssuedLink => TempData["IssuedLink"] as string;
 
     public string? IssuedEmail => TempData["IssuedEmail"] as string;
+
+    public string? IssuedCode => TempData["IssuedCode"] as string;
 
     public class InputModel
     {
@@ -93,19 +95,24 @@ public class InvitationsModel : PageModel
         var issued = await _invitations.IssueAsync(
             Input.Email, Input.Role, Input.ValidForDays, _userManager.GetUserId(User)!);
 
+        // The link names the address but never the code, so the two travel separately.
         var link = Url.Page("/Account/Register", pageHandler: null,
-            values: new { token = issued.Token }, protocol: Request.Scheme);
+            values: new { email = Input.Email.Trim() }, protocol: Request.Scheme);
 
         TempData["IssuedLink"] = link;
         TempData["IssuedEmail"] = Input.Email.Trim();
+        TempData["IssuedCode"] = AccessCodes.Display(issued.Code);
 
         var emailed = false;
         if (_email.IsConfigured)
         {
+            // Only the link is mailed. The access code is given by other means, so a copy of the
+            // email alone is not enough to join.
             var portal = _configuration["Portal:Name"] ?? "The Tool Shed";
             emailed = await _email.SendAsync(Input.Email.Trim(), $"You are invited to {portal}",
                 $"You have been invited to join {portal}, a members-only place to lend and borrow tools.\n\n" +
-                $"Create your account here (the link works once, until {issued.Invitation.ExpiresUtc.ToLocalTime():d MMM yyyy}):\n{link}");
+                $"Create your account here (the invitation works until {issued.Invitation.ExpiresUtc.ToLocalTime():d MMM yyyy}):\n{link}\n\n" +
+                "You will also need a six-digit access code. The person who invited you will give it to you separately.");
         }
 
         TempData["Status"] = emailed ? "Invitation created and emailed." : "Invitation created.";

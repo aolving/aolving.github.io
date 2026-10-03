@@ -13,30 +13,24 @@ public partial class InvitePage : PageBase
         return this;
     }
 
-    /// <summary>
-    /// An invitation link already says which portal it belongs to, so fill that in rather than
-    /// asking the member to type it a second time.
-    /// </summary>
-    private void OnLinkChanged(object? sender, TextChangedEventArgs e)
-    {
-        if (Uri.TryCreate(e.NewTextValue?.Trim(), UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https")
-        {
-            ServerEntry.Text = uri.GetLeftPart(UriPartial.Authority);
-        }
-    }
-
     private async void OnJoin(object? sender, EventArgs e)
     {
-        var token = InviteLink.ExtractToken(LinkEntry.Text);
-        if (token is null)
-        {
-            await DisplayAlertAsync("Invitation", "That does not look like an invitation link. Paste the whole link you were sent.", "OK");
-            return;
-        }
-
         if (!ServerAddress.TryNormalise(ServerEntry.Text, out var server, out var problem))
         {
             await DisplayAlertAsync("Portal address", problem, "OK");
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(EmailEntry.Text) || !EmailEntry.Text.Contains('@'))
+        {
+            await DisplayAlertAsync("Email", "Enter the email address you were invited with.", "OK");
+            return;
+        }
+
+        var code = AccessCode.Normalise(CodeEntry.Text);
+        if (code is null)
+        {
+            await DisplayAlertAsync("Access code", "The access code is six digits. Check what your administrator gave you.", "OK");
             return;
         }
 
@@ -57,7 +51,7 @@ public partial class InvitePage : PageBase
         {
             await RunAsync(async () =>
             {
-                await Session.RegisterAsync(server, token, NameEntry.Text.Trim(), PasswordEntry.Text, LocationEntry.Text);
+                await Session.RegisterAsync(server, EmailEntry.Text.Trim(), code, NameEntry.Text.Trim(), PasswordEntry.Text, LocationEntry.Text);
                 ((App)Application.Current!).ShowMain();
             });
         }

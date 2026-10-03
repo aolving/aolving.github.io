@@ -73,10 +73,10 @@ public sealed class PortalSession
         await RememberAsync(server, auth);
     }
 
-    public async Task RegisterAsync(Uri server, string invitationToken, string displayName, string password, string? location)
+    public async Task RegisterAsync(Uri server, string email, string accessCode, string displayName, string password, string? location)
     {
         Connect(server);
-        var auth = await _client!.RegisterAsync(invitationToken, displayName, password, location, DeviceName);
+        var auth = await _client!.RegisterAsync(email, accessCode, displayName, password, location, DeviceName);
         await RememberAsync(server, auth);
     }
 

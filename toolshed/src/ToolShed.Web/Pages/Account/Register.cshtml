@@ -1,40 +1,35 @@
 @page
 @model ToolShed.Web.Pages.Account.RegisterModel
 @{
-    ViewData["Title"] = "Accept your invitation";
+    ViewData["Title"] = "Create your account";
 }
-<h1>Accept your invitation</h1>
+<h1>Create your account</h1>
+<p class="muted">This portal is invite only. You need the email address you were invited with and the six-digit access code your administrator gave you.</p>
 
-@if (!Model.TokenIsValid)
-{
-    <div class="notice notice-bad">
-        <p>This invitation link is not valid. Invitations are single use and expire, so it may have already been accepted or run out of time.</p>
-        <p>Ask whoever invited you to send a fresh one.</p>
-    </div>
-    <p><a asp-page="/Account/Login">Back to sign in</a></p>
-}
-else
-{
-    <p class="muted">Setting up the account for <strong>@Model.InvitedEmail</strong>.</p>
+<partial name="_ValidationSummary" model="ModelState" />
 
-    <partial name="_ValidationSummary" model="ModelState" />
+<form method="post" class="card form" autocomplete="off">
+    <label asp-for="Input.Email">Email</label>
+    <input asp-for="Input.Email" type="email" autocomplete="username" required />
 
-    <form method="post" class="card form">
-        <input type="hidden" asp-for="Token" />
+    <label asp-for="Input.AccessCode">Access code</label>
+    <input asp-for="Input.AccessCode" inputmode="numeric" autocomplete="one-time-code" maxlength="7" pattern="[0-9 \-]*" placeholder="123 456" required />
+    <p class="hint">Six digits. It was given to you separately from the invitation link.</p>
 
-        <label asp-for="Input.DisplayName">Name other members will see</label>
-        <input asp-for="Input.DisplayName" maxlength="80" required />
+    <label asp-for="Input.DisplayName">Name other members will see</label>
+    <input asp-for="Input.DisplayName" maxlength="80" required />
 
-        <label asp-for="Input.Location">Rough area (optional)</label>
-        <input asp-for="Input.Location" maxlength="120" placeholder="e.g. Sellwood" />
+    <label asp-for="Input.Location">Rough area (optional)</label>
+    <input asp-for="Input.Location" maxlength="120" placeholder="e.g. Sellwood" />
 
-        <label asp-for="Input.Password">Password</label>
-        <input asp-for="Input.Password" type="password" autocomplete="new-password" required />
-        <p class="hint">At least 12 characters, with upper and lower case, a digit and a symbol.</p>
+    <label asp-for="Input.Password">Choose a password</label>
+    <input asp-for="Input.Password" type="password" autocomplete="new-password" required />
+    <p class="hint">At least 12 characters, with upper and lower case, a digit and a symbol.</p>
 
-        <label asp-for="Input.ConfirmPassword">Confirm password</label>
-        <input asp-for="Input.ConfirmPassword" type="password" autocomplete="new-password" required />
+    <label asp-for="Input.ConfirmPassword">Confirm password</label>
+    <input asp-for="Input.ConfirmPassword" type="password" autocomplete="new-password" required />
 
-        <button type="submit">Create my account</button>
-    </form>
-}
+    <button type="submit">Create my account</button>
+</form>
+
+<p><a asp-page="/Account/Login">Already have an account? Sign in</a></p>

@@ -128,14 +128,14 @@ public static class PortalApi
             return Error(StatusCodes.Status400BadRequest, invalid);
         }
 
-        var invitation = await invitations.FindUsableAsync(request.InvitationToken);
+        // Email and access code are checked together, with one answer for every kind of failure.
+        var invitation = await invitations.VerifyAsync(request.Email, request.AccessCode);
         if (invitation is null)
         {
-            return Error(StatusCodes.Status400BadRequest,
-                "This invitation is not valid. It may already have been used, or it has expired.");
+            return Error(StatusCodes.Status400BadRequest, InvitationService.NotValidMessage);
         }
 
-        // The address comes from the invitation, never from the request.
+        // The account takes the address the invitation was issued to.
         var email = invitation.Email.ToLowerInvariant();
         var user = new ApplicationUser
         {

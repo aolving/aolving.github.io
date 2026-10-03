@@ -9,9 +9,13 @@ public record LoginRequest(
     [property: Required] string Password,
     [property: StringLength(80)] string? DeviceName = null);
 
-/// <summary>Redeems an invitation from inside the app. The token is the one from the invite link.</summary>
+/// <summary>
+/// Creates an account from inside the app. It takes the same three things as the website: the email the
+/// member was invited with, the six-digit access code issued with that invitation, and a password they choose.
+/// </summary>
 public record RegisterRequest(
-    [property: Required] string InvitationToken,
+    [property: Required, EmailAddress, StringLength(200)] string Email,
+    [property: Required] string AccessCode,
     [property: Required, StringLength(80, MinimumLength = 2)] string DisplayName,
     [property: Required] string Password,
     [property: StringLength(120)] string? Location = null,

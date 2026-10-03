@@ -9,8 +9,8 @@ using ToolShed.Web.Services;
 namespace ToolShed.Web.Pages.Account;
 
 /// <summary>
-/// The only way an account is created. Without a live invitation token this page
-/// shows nothing but an apology — there is no open registration form to find.
+/// The only way an account is created. Joining takes the email you were invited with, a password you
+/// choose, and the six-digit access code issued with the invitation. All three have to line up.
 /// </summary>
 [AllowAnonymous]
 public class RegisterModel : PageModel
@@ -32,18 +32,20 @@ public class RegisterModel : PageModel
         _logger = logger;
     }
 
-    [BindProperty(SupportsGet = true)]
-    public string? Token { get; set; }
-
     [BindProperty]
     public InputModel Input { get; set; } = new();
 
-    public bool TokenIsValid { get; private set; }
-
-    public string? InvitedEmail { get; private set; }
-
     public class InputModel
     {
+        [Required]
+        [EmailAddress]
+        [StringLength(200)]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Enter your six-digit access code.")]
+        [Display(Name = "Access code")]
+        public string AccessCode { get; set; } = string.Empty;
+
         [Required]
         [StringLength(80, MinimumLength = 2)]
         [Display(Name = "Display name")]
@@ -63,48 +65,40 @@ public class RegisterModel : PageModel
         public string ConfirmPassword { get; set; } = string.Empty;
     }
 
-    public async Task<IActionResult> OnGetAsync()
-    {
-        var invitation = await _invitations.FindUsableAsync(Token);
-        TokenIsValid = invitation is not null;
-        InvitedEmail = invitation?.Email.ToLowerInvariant();
-        return Page();
-    }
+    /// <summary>The invitation link carries the address, so it is filled in; the code is never in a link.</summary>
+    public void OnGet(string? email) => Input.Email = email?.Trim() ?? string.Empty;
 
     public async Task<IActionResult> OnPostAsync()
     {
-        // Re-check the token on every post: it may have been revoked or spent
-        // between loading the form and submitting it.
-        var invitation = await _invitations.FindUsableAsync(Token);
-        if (invitation is null)
-        {
-            TokenIsValid = false;
-            return Page();
-        }
-
-        TokenIsValid = true;
-        InvitedEmail = invitation.Email.ToLowerInvariant();
-
         if (!ModelState.IsValid)
         {
             return Page();
         }
 
-        // The address comes from the invitation, never from the form, so a token
-        // cannot be redirected to a different mailbox.
+        // Checked before anything is created, and with one answer for every kind of failure.
+        var invitation = await _invitations.VerifyAsync(Input.Email, Input.AccessCode);
+        if (invitation is null)
+        {
+            ModelState.AddModelError(string.Empty, InvitationService.NotValidMessage);
+            Input.AccessCode = string.Empty;
+            return Page();
+        }
+
+        var email = invitation.Email.ToLowerInvariant();
         var user = new ApplicationUser
         {
-            UserName = InvitedEmail,
-            Email = InvitedEmail,
+            UserName = email,
+            Email = email,
             DisplayName = Input.DisplayName.Trim(),
             Location = string.IsNullOrWhiteSpace(Input.Location) ? null : Input.Location.Trim(),
-            // The invitation was delivered to this mailbox, which is the proof of ownership.
+            // The invitation names this mailbox, which is the proof of ownership.
             EmailConfirmed = true
         };
 
         var result = await _userManager.CreateAsync(user, Input.Password);
         if (!result.Succeeded)
         {
+            // A weak password does not use up the invitation; the code still works for the next try.
             foreach (var error in result.Errors)
             {
                 ModelState.AddModelError(string.Empty, error.Description);

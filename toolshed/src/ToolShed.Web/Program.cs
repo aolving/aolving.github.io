@@ -69,6 +69,10 @@ builder.Services.AddDataProtection()
     .SetApplicationName("ToolShed")
     .PersistKeysToFileSystem(new DirectoryInfo(keysDirectory));
 
+// The secret that keys the hashes of invitation access codes. It lives beside the signing keys,
+// apart from the database, so a copy of the database alone does not reveal any code.
+builder.Services.AddSingleton(AccessCodeHasher.FromDirectory(keysDirectory));
+
 // Opt-in: only trust X-Forwarded-* when the app is reachable solely through your reverse proxy,
 // otherwise anyone could spoof their address and sidestep the rate limiter.
 var behindProxy = builder.Configuration.GetValue<bool>("Hosting:BehindProxy");
