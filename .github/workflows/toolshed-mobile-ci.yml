@@ -76,8 +76,13 @@ jobs:
       - name: Install the MAUI iOS workload
         run: dotnet workload install maui-ios
 
-      - name: Show the Xcode in use
-        run: xcodebuild -version
+      - name: Use the newest Xcode on the runner
+        run: |
+          # The iOS workload targets the newest Apple SDK, which needs the matching Xcode.
+          ls -d /Applications/Xcode*.app
+          newest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$newest" ]; then sudo xcode-select -s "$newest/Contents/Developer"; fi
+          xcodebuild -version
 
       - name: Build for the iOS simulator
         run: |
