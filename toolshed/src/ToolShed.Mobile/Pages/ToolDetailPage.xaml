@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:PageBase xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                xmlns:pages="clr-namespace:ToolShed.Mobile.Pages"
+                x:Class="ToolShed.Mobile.Pages.ToolDetailPage"
+                Title="Tool">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+            <Label x:Name="NameLabel" FontSize="26" FontAttributes="Bold" />
+            <Label x:Name="MetaLabel" TextColor="{StaticResource Muted}" />
+            <Label x:Name="PausedLabel" Text="The owner has paused loans for this tool." TextColor="{StaticResource Danger}" IsVisible="False" />
+
+            <CollectionView x:Name="Photos" ItemsLayout="HorizontalList" HeightRequest="220" IsVisible="False">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Image Source="{Binding Image}" HeightRequest="220" WidthRequest="300" Aspect="AspectFill" Margin="0,0,8,0"
+                               BackgroundColor="{AppThemeBinding Light=#EFEAE1, Dark=#2C2824}" />
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <Label x:Name="DescriptionLabel" />
+
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Next six weeks" FontAttributes="Bold" />
+                    <Grid x:Name="StripGrid" ColumnSpacing="4" RowSpacing="4" />
+                    <HorizontalStackLayout Spacing="14">
+                        <Label Text="Free" TextColor="{StaticResource Good}" FontSize="12" />
+                        <Label Text="Requested" TextColor="{StaticResource Amber}" FontSize="12" />
+                        <Label Text="Booked" TextColor="{StaticResource Danger}" FontSize="12" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <Border x:Name="RequestCard" Style="{StaticResource Card}" IsVisible="False">
+                <VerticalStackLayout Spacing="8">
+                    <Label Text="Ask to borrow it" FontAttributes="Bold" />
+                    <Label Text="Collect on" FontSize="13" TextColor="{StaticResource Muted}" />
+                    <DatePicker x:Name="StartPicker" />
+                    <Label Text="Return by" FontSize="13" TextColor="{StaticResource Muted}" />
+                    <DatePicker x:Name="EndPicker" />
+                    <Editor x:Name="NoteEditor" Placeholder="Note for the owner (optional)" HeightRequest="80" MaxLength="1000" AutoSize="TextChanges" />
+                    <Label x:Name="LimitLabel" FontSize="12" TextColor="{StaticResource Muted}" />
+                    <Button x:Name="RequestButton" Text="Send request" Clicked="OnRequest" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Button x:Name="EditButton" Text="Edit this listing" Clicked="OnEdit" IsVisible="False" />
+        </VerticalStackLayout>
+    </ScrollView>
+</pages:PageBase>

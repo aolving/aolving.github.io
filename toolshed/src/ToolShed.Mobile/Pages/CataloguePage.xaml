@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:PageBase xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                xmlns:pages="clr-namespace:ToolShed.Mobile.Pages"
+                x:Class="ToolShed.Mobile.Pages.CataloguePage"
+                Title="Catalogue">
+    <Grid RowDefinitions="Auto,*" Padding="12" RowSpacing="8">
+        <SearchBar x:Name="Search" Placeholder="Search tools" SearchButtonPressed="OnSearch" />
+
+        <RefreshView x:Name="Refresh" Grid.Row="1" Refreshing="OnRefreshing">
+            <CollectionView x:Name="List" SelectionMode="Single" SelectionChanged="OnSelected">
+                <CollectionView.EmptyView>
+                    <Label Text="Nothing matches yet." HorizontalOptions="Center" TextColor="{StaticResource Muted}" Margin="0,32" />
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource Card}">
+                            <Grid ColumnDefinitions="72,*" ColumnSpacing="12">
+                                <Image Source="{Binding Cover}" WidthRequest="72" HeightRequest="72" Aspect="AspectFill"
+                                       BackgroundColor="{AppThemeBinding Light=#EFEAE1, Dark=#2C2824}" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="16" />
+                                    <Label Text="{Binding Subtitle}" FontSize="13" TextColor="{StaticResource Muted}" />
+                                    <Label Text="{Binding Status}" FontSize="13" TextColor="{Binding StatusColor}" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </RefreshView>
+    </Grid>
+</pages:PageBase>

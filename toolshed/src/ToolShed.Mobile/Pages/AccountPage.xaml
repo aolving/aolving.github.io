@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:PageBase xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                xmlns:pages="clr-namespace:ToolShed.Mobile.Pages"
+                x:Class="ToolShed.Mobile.Pages.AccountPage"
+                Title="Account">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+            <Border Style="{StaticResource Card}">
+                <VerticalStackLayout Spacing="4">
+                    <Label x:Name="NameLabel" FontSize="22" FontAttributes="Bold" />
+                    <Label x:Name="EmailLabel" TextColor="{StaticResource Muted}" />
+                    <Label x:Name="RoleLabel" FontSize="13" TextColor="{StaticResource Muted}" />
+                    <Label x:Name="ServerLabel" FontSize="13" TextColor="{StaticResource Muted}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Label x:Name="AdminHint" FontSize="13" TextColor="{StaticResource Muted}" IsVisible="False"
+                   Text="You are an administrator. Inviting people and managing members is done on the website." />
+
+            <Button Text="Open the website" Clicked="OnOpenWebsite" />
+            <Label Text="Change your password, invite people and manage members on the website. Your sign-in here ends automatically when your password changes."
+                   FontSize="12" TextColor="{StaticResource Muted}" />
+
+            <Button Text="Sign out" Style="{StaticResource DangerButton}" Clicked="OnSignOut" Margin="0,16,0,0" />
+        </VerticalStackLayout>
+    </ScrollView>
+</pages:PageBase>

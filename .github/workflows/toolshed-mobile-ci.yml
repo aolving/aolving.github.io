@@ -1,0 +1,86 @@
+name: ToolShed Mobile CI
+
+on:
+  push:
+    branches: ['**']
+    paths:
+      - 'toolshed/src/ToolShed.Mobile/**'
+      - 'toolshed/src/ToolShed.Client/**'
+      - 'toolshed/src/ToolShed.Contracts/**'
+      - '.github/workflows/toolshed-mobile-ci.yml'
+  pull_request:
+    paths:
+      - 'toolshed/src/ToolShed.Mobile/**'
+      - 'toolshed/src/ToolShed.Client/**'
+      - 'toolshed/src/ToolShed.Contracts/**'
+      - '.github/workflows/toolshed-mobile-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install the MAUI Android workload
+        run: dotnet workload install maui-android
+
+      - name: Install Android SDK components
+        run: |
+          dotnet build toolshed/src/ToolShed.Mobile -f net8.0-android \
+            -t:InstallAndroidDependencies \
+            -p:AndroidSdkDirectory="$ANDROID_HOME" \
+            -p:AcceptAndroidSDKLicenses=True
+
+      - name: Build an installable APK
+        run: |
+          dotnet publish toolshed/src/ToolShed.Mobile -f net8.0-android -c Release \
+            -p:AndroidPackageFormat=apk \
+            -p:AndroidSdkDirectory="$ANDROID_HOME"
+
+      - name: Collect the APK
+        run: |
+          mkdir -p out
+          find toolshed/src/ToolShed.Mobile/bin -name '*.apk' -print -exec cp {} out/ \;
+          ls -la out
+          test -n "$(ls out/*.apk 2>/dev/null)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: toolshed-android-apk
+          path: out/*.apk
+          if-no-files-found: error
+
+  ios:
+    # Needs Xcode, so it runs on a Mac. Builds for the simulator, which needs no signing certificate.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install the MAUI iOS workload
+        run: dotnet workload install maui-ios
+
+      - name: Show the Xcode in use
+        run: xcodebuild -version
+
+      - name: Build for the iOS simulator
+        run: |
+          dotnet build toolshed/src/ToolShed.Mobile -f net8.0-ios -c Debug \
+            -p:RuntimeIdentifier=iossimulator-arm64 \
+            -p:ValidateXcodeVersion=false

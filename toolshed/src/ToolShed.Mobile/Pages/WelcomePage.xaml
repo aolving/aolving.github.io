@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:PageBase xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                xmlns:pages="clr-namespace:ToolShed.Mobile.Pages"
+                x:Class="ToolShed.Mobile.Pages.WelcomePage"
+                NavigationPage.HasNavigationBar="False"
+                Title="Sign in">
+    <ScrollView>
+        <VerticalStackLayout Padding="24" Spacing="10" VerticalOptions="Center">
+            <Label Text="The Tool Shed" FontSize="32" FontAttributes="Bold" />
+            <Label Text="Borrow well, return clean." TextColor="{StaticResource Muted}" Margin="0,0,0,12" />
+
+            <Label x:Name="NoticeLabel" IsVisible="False" TextColor="{StaticResource Danger}" />
+
+            <Label Text="Portal address" FontAttributes="Bold" />
+            <Entry x:Name="ServerEntry" Placeholder="tools.example.com" Keyboard="Url" ReturnType="Next" />
+
+            <Label Text="Email" FontAttributes="Bold" />
+            <Entry x:Name="EmailEntry" Keyboard="Email" ReturnType="Next" />
+
+            <Label Text="Password" FontAttributes="Bold" />
+            <Entry x:Name="PasswordEntry" IsPassword="True" ReturnType="Go" Completed="OnSignIn" />
+
+            <Button x:Name="SignInButton" Text="Sign in" Clicked="OnSignIn" Margin="0,8,0,0" />
+            <Button Text="I have an invitation" Style="{StaticResource LinkButton}" Clicked="OnInvitation" />
+
+            <Label Text="This portal is invite only. Forgotten your password? Ask an administrator for a reset link."
+                   FontSize="12" TextColor="{StaticResource Muted}" HorizontalTextAlignment="Center" />
+        </VerticalStackLayout>
+    </ScrollView>
+</pages:PageBase>

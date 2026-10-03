@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<pages:PageBase xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+                xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+                xmlns:pages="clr-namespace:ToolShed.Mobile.Pages"
+                x:Class="ToolShed.Mobile.Pages.EditToolPage"
+                Title="List a tool">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="10">
+            <Label Text="Name" FontAttributes="Bold" />
+            <Entry x:Name="NameEntry" MaxLength="120" />
+
+            <Label Text="Category" FontAttributes="Bold" />
+            <Entry x:Name="CategoryEntry" Placeholder="Power tools, Gardening, ..." MaxLength="60" />
+
+            <Label Text="Description" FontAttributes="Bold" />
+            <Editor x:Name="DescriptionEditor" HeightRequest="100" MaxLength="2000" AutoSize="TextChanges" />
+
+            <Label Text="Collection point" FontAttributes="Bold" />
+            <Entry x:Name="PickupEntry" Placeholder="e.g. Garage, back gate" MaxLength="120" />
+
+            <Label Text="Longest single loan (days)" FontAttributes="Bold" />
+            <Stepper x:Name="DaysStepper" Minimum="1" Maximum="90" Increment="1" Value="14" ValueChanged="OnDaysChanged" />
+            <Label x:Name="DaysLabel" />
+
+            <HorizontalStackLayout Spacing="10">
+                <Switch x:Name="ListedSwitch" IsToggled="True" />
+                <Label Text="Listed in the catalogue and open to requests" VerticalOptions="Center" />
+            </HorizontalStackLayout>
+
+            <Button x:Name="SaveButton" Text="Save" Clicked="OnSave" Margin="0,8,0,0" />
+
+            <Label Text="Photos" FontAttributes="Bold" FontSize="18" Margin="0,16,0,0" />
+            <Label x:Name="PhotoHint" FontSize="12" TextColor="{StaticResource Muted}" />
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                <Button Text="Take a photo" Clicked="OnTakePhoto" />
+                <Button Grid.Column="1" Text="Choose a photo" Clicked="OnPickPhoto" />
+            </Grid>
+
+            <CollectionView x:Name="PhotoList" SelectionMode="None">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Border Style="{StaticResource Card}">
+                            <Grid ColumnDefinitions="96,*" ColumnSpacing="12">
+                                <Image Source="{Binding Image}" WidthRequest="96" HeightRequest="96" Aspect="AspectFill"
+                                       BackgroundColor="{AppThemeBinding Light=#EFEAE1, Dark=#2C2824}" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
+                                    <Label Text="Cover photo" IsVisible="{Binding IsCover}" TextColor="{StaticResource Good}" FontAttributes="Bold" />
+                                    <Button Text="Make cover" IsVisible="{Binding CanMakeCover}" Style="{StaticResource LinkButton}" Clicked="OnMakeCover" HorizontalOptions="Start" />
+                                    <Button Text="Delete" Style="{StaticResource LinkButton}" TextColor="{StaticResource Danger}" Clicked="OnDeletePhoto" HorizontalOptions="Start" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <Button x:Name="DeleteButton" Text="Delete this listing" Style="{StaticResource DangerButton}" Clicked="OnDelete" IsVisible="False" Margin="0,24,0,0" />
+        </VerticalStackLayout>
+    </ScrollView>
+</pages:PageBase>

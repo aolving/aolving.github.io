@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+       xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+       xmlns:pages="clr-namespace:ToolShed.Mobile.Pages"
+       x:Class="ToolShed.Mobile.AppShell"
+       Shell.FlyoutBehavior="Disabled"
+       Shell.BackgroundColor="{StaticResource Brand}"
+       Shell.TitleColor="White"
+       Shell.ForegroundColor="White"
+       Shell.TabBarBackgroundColor="{AppThemeBinding Light=#FFFFFF, Dark=#23201D}"
+       Shell.TabBarTitleColor="{StaticResource Brand}"
+       Shell.TabBarUnselectedColor="{StaticResource Muted}">
+
+    <TabBar>
+        <ShellContent Title="Catalogue" Icon="catalogue.png" Route="catalogue" ContentTemplate="{DataTemplate pages:CataloguePage}" />
+        <ShellContent Title="My tools" Icon="tools.png" Route="mytools" ContentTemplate="{DataTemplate pages:MyToolsPage}" />
+        <ShellContent Title="Loans" Icon="loans.png" Route="loans" ContentTemplate="{DataTemplate pages:LoansPage}" />
+        <ShellContent Title="Account" Icon="account.png" Route="account" ContentTemplate="{DataTemplate pages:AccountPage}" />
+    </TabBar>
+</Shell>
