@@ -149,13 +149,14 @@ not an address is a member.
 
 ### Building and installing
 
-The app targets .NET 8 and needs the MAUI workloads; it is deliberately **not** in `ToolShed.sln`, so the
-server builds without them.
+The app targets .NET 10 (MAUI 8 is out of support) and needs the MAUI workloads; it is deliberately **not** in
+`ToolShed.sln`, so the server builds without them. The server and the shared libraries stay on .NET 8, which the
+app can reference.
 
 ```bash
 dotnet workload install maui-android            # and maui-ios, on a Mac
-dotnet build src/ToolShed.Mobile -f net8.0-android
-dotnet build src/ToolShed.Mobile -f net8.0-ios  # Mac with Xcode only
+dotnet build src/ToolShed.Mobile -f net10.0-android
+dotnet build src/ToolShed.Mobile -f net10.0-ios -p:TargetFrameworks=net10.0-ios  # Mac with Xcode only
 ```
 
 Or open `src/ToolShed.Mobile` in Visual Studio / Rider / VS Code with the MAUI tooling, pick a device or

@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The iOS and Android app. It is deliberately not part of ToolShed.sln: building it needs the
-       .NET MAUI workloads (and a Mac for iOS), which the server's build does not. It has its own
-       workflow, .github/workflows/toolshed-mobile-ci.yml. -->
+  <!-- The iOS and Android app, on .NET 10 (MAUI 8 is out of support). It is deliberately not part of
+       ToolShed.sln: building it needs the .NET MAUI workloads (and a Mac for iOS), which the server's
+       build does not. It has its own workflow, .github/workflows/toolshed-mobile-ci.yml. The shared
+       libraries it references target net8.0, which a net10.0 app can use. -->
   <PropertyGroup>
-    <TargetFrameworks>net8.0-android</TargetFrameworks>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('osx'))">$(TargetFrameworks);net8.0-ios</TargetFrameworks>
+    <TargetFrameworks>net10.0-android</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('osx'))">$(TargetFrameworks);net10.0-ios</TargetFrameworks>
 
     <OutputType>Exe</OutputType>
     <RootNamespace>ToolShed.Mobile</RootNamespace>
@@ -19,7 +20,7 @@
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
 
-    <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-ios'))">14.2</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-ios'))">15.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$(TargetFramework.Contains('-android'))">24.0</SupportedOSPlatformVersion>
 
     <!-- Screens bind to view-model properties by name at runtime. The trimmer cannot see those
@@ -36,10 +37,6 @@
     <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#8A4B1E" />
     <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#8A4B1E" BaseSize="128,128" />
     <MauiImage Include="Resources\Images\*" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
   </ItemGroup>
 
   <ItemGroup>

@@ -4,6 +4,8 @@ WORKDIR /src
 
 # Restore first so the layer is cached until a project file changes.
 COPY ToolShed.sln ./
+COPY src/ToolShed.Contracts/ToolShed.Contracts.csproj src/ToolShed.Contracts/
+COPY src/ToolShed.Client/ToolShed.Client.csproj src/ToolShed.Client/
 COPY src/ToolShed.Web/ToolShed.Web.csproj src/ToolShed.Web/
 COPY tests/ToolShed.Tests/ToolShed.Tests.csproj tests/ToolShed.Tests/
 RUN dotnet restore

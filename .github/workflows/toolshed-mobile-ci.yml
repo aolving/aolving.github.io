@@ -27,26 +27,26 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Install the MAUI Android workload
         run: dotnet workload install maui-android
 
       - name: Install Android SDK components
         run: |
-          dotnet build toolshed/src/ToolShed.Mobile -f net8.0-android \
+          dotnet build toolshed/src/ToolShed.Mobile -f net10.0-android \
             -t:InstallAndroidDependencies \
             -p:AndroidSdkDirectory="$ANDROID_HOME" \
             -p:AcceptAndroidSDKLicenses=True
 
       - name: Build an installable APK
         run: |
-          dotnet publish toolshed/src/ToolShed.Mobile -f net8.0-android -c Release \
+          dotnet publish toolshed/src/ToolShed.Mobile -f net10.0-android -c Release \
             -p:AndroidPackageFormat=apk \
             -p:AndroidSdkDirectory="$ANDROID_HOME"
 
@@ -71,7 +71,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
       - name: Install the MAUI iOS workload
         run: dotnet workload install maui-ios
@@ -81,6 +81,9 @@ jobs:
 
       - name: Build for the iOS simulator
         run: |
-          dotnet build toolshed/src/ToolShed.Mobile -f net8.0-ios -c Debug \
+          # Restrict the build to iOS: on a Mac the project would otherwise also restore the
+          # Android target, whose workload this job does not install.
+          dotnet build toolshed/src/ToolShed.Mobile -f net10.0-ios -c Debug \
+            -p:TargetFrameworks=net10.0-ios \
             -p:RuntimeIdentifier=iossimulator-arm64 \
             -p:ValidateXcodeVersion=false
