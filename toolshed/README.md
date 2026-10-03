@@ -75,6 +75,104 @@ password-reset links, and loan updates (a request to the owner; approval, declin
 return to the borrower; a cancellation to whoever did not cancel). A failed send never
 fails the action it belongs to.
 
+## The iOS and Android app
+
+`src/ToolShed.Mobile` is one .NET MAUI app for both phones. It is not a separate system: it signs
+in to your portal and uses the same accounts, tools, photos and loans as the website, so a tool
+listed on the website is in the app and a loan approved in the app shows on the website.
+
+**What members can do in the app:** sign in (or accept an invitation by pasting its link), browse and
+search the catalogue, open a tool to see its photos and a six-week availability calendar, request a
+loan, list their own tools (take or choose photos, set the cover, pause or delete a listing), and
+handle loans — approve or decline with a note, mark returned, cancel, see what is overdue.
+Administration (inviting people, managing members, resetting passwords) stays on the website.
+
+**First launch:** the app asks for your portal's address (for example `tools.example.com`) because every
+group runs its own portal. It must be `https`; plain `http` is accepted only for testing against a
+portal on the same computer (`localhost`, or `10.0.2.2` from the Android emulator).
+
+### How the app and the website work together
+
+```
+  iOS / Android app ──┐                       ┌── browser
+  (ToolShed.Mobile)   │                       │   (Razor Pages)
+        │ uses        │ JSON, bearer token    │ cookie
+  ToolShed.Client ────┴──────► /api/v1 ◄──────┘
+  ToolShed.Contracts ◄──────── shared types ───► the portal (ToolShed.Web)
+                                                      │
+                                   BookingService · ToolService · InvitationService
+                                                      │
+                                              one SQLite database
+```
+
+- **One set of rules.** The API is a thin layer over the same services the website uses, so a loan
+  requested on a phone is checked for double-booking, ownership and loan limits exactly like one
+  requested in a browser. The website's Create/Edit pages and the API both go through `ToolService`.
+- **One contract.** `ToolShed.Contracts` holds the request and response types. The server and the app
+  both compile against it, so a mismatch is a build error rather than a runtime surprise.
+- **Tested end to end.** The same `ToolShed.Client` the app uses is driven against the real running
+  portal in CI, including tests that a tool or loan made on the website appears in the API and
+  vice versa.
+
+### How the app signs in
+
+- Signing in returns a random 256-bit **device token**. The portal stores only its SHA-256 hash, so a
+  leaked database cannot be replayed against the API.
+- The app keeps the token in the platform's secure storage (Keychain on iOS, encrypted preferences on
+  Android) and sends it as `Authorization: Bearer ...`. The API never accepts the website's cookie,
+  which removes any cross-site request risk from it.
+- A token lasts 30 days from its last use, and a member can have up to 10 devices (the least recently
+  used is signed out beyond that).
+- A token **stops working immediately** when the member's password changes, their role changes, or an
+  admin suspends them, and when they sign out. The app then returns to its sign-in screen.
+- Photos are private, so the app fetches them with the token rather than handing a URL to an image
+  view. Uploads are checked by content, never by file name, exactly as on the website.
+
+### API reference
+
+All routes are under `/api/v1`, speak JSON, and (except sign-in) need the bearer token. Errors are
+`{ "error": "message for a person" }` with an ordinary HTTP status.
+
+| Route | Purpose |
+| --- | --- |
+| `POST /auth/login` · `POST /auth/register` · `POST /auth/logout` | Sign in, redeem an invitation, end this device |
+| `GET /me` | The signed-in member |
+| `GET /tools?query=&category=&mine=` · `GET /tools/{id}` | Browse, search, and a tool with its photos and held dates |
+| `POST /tools` · `PUT /tools/{id}` · `DELETE /tools/{id}` | List, edit (including pausing) and delete your own tools |
+| `POST /tools/{id}/photos` (multipart `file`) · `POST …/photos/{photoId}/cover` · `DELETE …/photos/{photoId}` | Manage photos |
+| `GET /photos/{id}` (no `/api/v1`) | A photo's bytes; accepts the cookie or the token |
+| `POST /tools/{id}/bookings` · `GET /bookings` | Request a loan; your incoming and outgoing loans |
+| `POST /bookings/{id}/approve` · `decline` · `cancel` · `returned` | Act on a loan |
+
+Sign-in and registration share the website's rate limit and lockout, and give the same answer whether or
+not an address is a member.
+
+### Building and installing
+
+The app targets .NET 8 and needs the MAUI workloads; it is deliberately **not** in `ToolShed.sln`, so the
+server builds without them.
+
+```bash
+dotnet workload install maui-android            # and maui-ios, on a Mac
+dotnet build src/ToolShed.Mobile -f net8.0-android
+dotnet build src/ToolShed.Mobile -f net8.0-ios  # Mac with Xcode only
+```
+
+Or open `src/ToolShed.Mobile` in Visual Studio / Rider / VS Code with the MAUI tooling, pick a device or
+emulator, and run. To try it against a portal on your own computer, run the portal (`dotnet run`) and enter
+`http://10.0.2.2:5181` as the address from the Android emulator, or `http://localhost:5181` from the iOS
+simulator.
+
+`.github/workflows/toolshed-mobile-ci.yml` builds an installable, debug-signed **Android APK** on every
+push (download it from the workflow run's artifacts to side-load it) and builds the app for the **iOS
+simulator** on a Mac runner.
+
+**Before you publish to the stores** you will need to decide and supply things only you can:
+a bundle/application id of your own (it is `com.aolving.toolshed` now, in `ToolShed.Mobile.csproj`),
+an app icon and name you are happy with, an Apple Developer account with a signing certificate and
+provisioning profile for iOS, and a release keystore for Google Play. Neither the iOS app nor the
+release signing could be exercised in this repository's CI.
+
 ## How the invite flow works
 
 1. An admin opens **Invitations**, enters an email address, picks a role and a
@@ -140,6 +238,7 @@ dates; the rest release them.
 | Transport | HTTPS redirection and HSTS outside Development. |
 | Authorisation | Every tool and booking handler loads its row scoped to the caller's id, so an id in a URL cannot reach someone else's record. |
 | Email | Subjects have line breaks stripped, so member-supplied text cannot inject headers. |
+| Mobile API | Bearer device tokens only (never the cookie), stored hashed, revoked by sign-out, password change, role change or suspension; same rate limit and lockout as the website; plain `http` refused by the app except for same-device testing. |
 
 ## Database migrations
 
@@ -153,7 +252,7 @@ dotnet ef migrations add <Name> --project src/ToolShed.Web --output-dir Data/Mig
 
 ## Tests and CI
 
-`dotnet test` runs three layers:
+`dotnet test` runs four layers:
 
 - **Rule tests** — date maths, loan-window validation, upload sniffing, token handling.
 - **Service tests** — the booking rules against a real in-memory SQLite database, so
@@ -161,9 +260,14 @@ dotnet ef migrations add <Name> --project src/ToolShed.Web --output-dir Data/Mig
 - **Integration tests** — the real app is hosted and driven over HTTP: who gets in, the
   invitation flow, photo handling, a full loan from request to return, password reset,
   roles and suspension.
+- **API tests** — the real portal driven through `ToolShed.Client`, the library the app uses:
+  token sign-in and revocation, redeeming invitations, tools and photos, a whole loan, and
+  that the website and the API see the same data.
 
-GitHub Actions (`.github/workflows/toolshed-ci.yml`) builds and tests on every push,
-then builds the Docker image and smoke-tests the running container.
+GitHub Actions (`.github/workflows/toolshed-ci.yml`) builds and tests the server on every push,
+then builds the Docker image and smoke-tests the running container. A second workflow
+(`toolshed-mobile-ci.yml`) builds the mobile app. The app's screens themselves are not covered by
+automated tests; its network layer is, through the API tests above.
 
 ## Layout
 
@@ -172,9 +276,13 @@ toolshed/
   Dockerfile, docker-compose.yml, Caddyfile, .env.example
   src/ToolShed.Web/
     Program.cs                  composition root: Identity, policies, rate limits, /photos endpoint
+    Api/                        the /api/v1 endpoints and device-token authentication
     Data/                       DbContext, migrations, first-run bootstrap
-    Models/                     ApplicationUser, Tool, ToolPhoto, Booking, Invitation
-    Services/                   invitations, bookings, notifications, email, photo storage, headers
+    Models/                     ApplicationUser, Tool, ToolPhoto, Booking, Invitation, ApiToken
+    Services/                   invitations, bookings, tools, notifications, email, photos, headers
     Pages/                      Razor Pages (Account, Tools, Bookings, Admin)
-  tests/ToolShed.Tests/         rule, service and integration tests
+  src/ToolShed.Contracts/       request/response types shared by the server and the app
+  src/ToolShed.Client/          typed HttpClient wrapper for the API (what the app uses)
+  src/ToolShed.Mobile/          the iOS and Android app (.NET MAUI); not in ToolShed.sln
+  tests/ToolShed.Tests/         rule, service, integration and API tests
 ```
