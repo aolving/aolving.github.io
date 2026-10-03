@@ -1,0 +1,44 @@
+# TEMPORARY: generates the initial EF Core migration on a runner with the .NET SDK and commits
+# it back to this branch. Deleted again in the next commit once the migration has landed.
+name: Generate EF migration (temporary)
+
+on:
+  push:
+    branches: ['claude/dotnet-tool-sharing-portal-2kut7z']
+    paths:
+      - '.github/workflows/generate-migration.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install dotnet-ef
+        run: dotnet tool install --global dotnet-ef --version 8.0.11
+
+      - name: Generate InitialCreate
+        run: |
+          if [ -d toolshed/src/ToolShed.Web/Data/Migrations ]; then
+            echo "Migrations already exist; nothing to do."
+            exit 0
+          fi
+          dotnet ef migrations add InitialCreate \
+            --project toolshed/src/ToolShed.Web \
+            --output-dir Data/Migrations
+
+      - name: Commit the migration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add toolshed/src/ToolShed.Web/Data/Migrations
+          git diff --cached --quiet && { echo "No changes."; exit 0; }
+          git commit -m "Add initial EF Core migration"
+          git push
