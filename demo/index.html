@@ -181,6 +181,24 @@ code { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
 .scroll-x { overflow-x: auto; }
 .empty { color: var(--ink-soft); padding: 24px 8px; text-align: center; }
 
+/* ---------- the booking calendar ---------- */
+.cal { max-width: 21rem; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.cal-nav { background: var(--brand); color: var(--on-brand); border: 0; border-radius: 6px; padding: 2px 12px; font-size: 18px; line-height: 1.2; cursor: pointer; }
+.cal-nav:disabled { opacity: 0.4; cursor: not-allowed; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.cal-wd { text-align: center; font-size: 10px; color: var(--ink-soft); }
+.cal-day { aspect-ratio: 1; border-radius: 6px; font-size: 13px; font-weight: 500; background: var(--surface); color: var(--ink); border: 1px solid var(--line); cursor: pointer; padding: 0; }
+.cal-day:hover:not(:disabled) { border-color: var(--brand); }
+.cal-day:disabled { cursor: not-allowed; }
+.cal-off { opacity: 0.38; background: transparent; }
+.cal-today { border-color: var(--brand); }
+.cal-requested { background: color-mix(in srgb, var(--warn) 18%, transparent); border-color: var(--warn); opacity: 1; }
+.cal-booked { background: color-mix(in srgb, var(--bad) 20%, transparent); border-color: var(--bad); opacity: 1; }
+.cal-range { background: color-mix(in srgb, var(--brand) 24%, transparent); border-color: var(--brand); opacity: 1; }
+.cal-start, .cal-end { background: var(--brand); color: var(--on-brand); border-color: var(--brand); font-weight: 700; opacity: 1; }
+.cal-status { margin: 8px 0 4px; font-weight: 600; }
+
 /* ---------- behind the scenes ---------- */
 .log { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; }
 .log h2 { font-size: 22px; }
@@ -207,10 +225,10 @@ code { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
   <section class="try" aria-labelledby="try-h">
     <h2 id="try-h">Try this</h2>
     <ol>
-      <li><b>On the phone</b>, sign in as Ben, open the Cordless drill and send a request.</li>
+      <li><b>On the phone</b>, sign in as Ben, open the Cordless drill, tap a first and a last day on the calendar, and send the request. Days before the first one you tap cannot be chosen.</li>
       <li><b>On the website</b> you are Olive, the drill's owner. Open Loans, then approve Ben's request with a note.</li>
       <li><b>Back on the phone</b>, Loans shows Approved with Olive's note, and the drill's calendar is red on both screens.</li>
-      <li><b>On the website</b>, switch to Priya and ask for the same dates. They are already spoken for.</li>
+      <li><b>On the website</b>, switch to Priya and open the same drill. The days Ben has booked are greyed out, so you cannot pick them or run a loan across them.</li>
       <li><b>Generate access codes.</b> On the website as Olive, open Invitations and generate a few: some tied to an email, some open. On the phone, sign out, choose "I have an invitation", and join with an email, one of the codes and a password. Open codes work with any email; tied codes only with theirs. Wrong codes are refused, and thirty wrong guesses at open codes pause them.</li>
       <li><b>Photos.</b> On My tools, list a tool and press "Try an SVG disguised as a photo". It is refused, because the file's contents decide, not its name.</li>
     </ol>
@@ -310,8 +328,8 @@ function seed() {
 
 let S = seed();
 const freshUI = () => ({
-  web: { memberId: 1, route: { name: 'catalogue', id: null }, filters: { q: '', cat: '' }, error: null, issued: null, toast: null, snap: null },
-  phone: { memberId: null, guest: 'welcome', tab: 'catalogue', stack: [], filters: { q: '', cat: '' }, loansTab: 'in', error: null, toast: null, snap: null }
+  web: { memberId: 1, cal: null, route: { name: 'catalogue', id: null }, filters: { q: '', cat: '' }, error: null, issued: null, toast: null, snap: null },
+  phone: { memberId: null, cal: null, guest: 'welcome', tab: 'catalogue', stack: [], filters: { q: '', cat: '' }, loansTab: 'in', error: null, toast: null, snap: null }
 });
 let UI = freshUI();
 
@@ -554,22 +572,70 @@ function toolCard(t, me) {
     ${statusPill(t)}</span></button>`;
 }
 
-function stripHtml(t) {
-  const t0 = today();
-  const blanks = (parse(t0).getDay() + 6) % 7;
-  const held = heldFor(t.id);
-  let html = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<li class="wd" aria-hidden="true">${d}</li>`).join('');
-  html += '<li class="day blank" aria-hidden="true"></li>'.repeat(blanks);
-  for (let i = 0; i < 42; i++) {
-    const day = addDays(t0, i);
-    const covering = held.filter((b) => b.start <= day && day <= b.end);
-    const state = covering.some((b) => b.status === 'Approved') ? 'booked' : covering.length ? 'req' : 'free';
-    const word = { booked: 'booked', req: 'requested', free: 'free' }[state];
-    const dd = parse(day);
-    html += `<li class="day ${state}" aria-label="${esc(fmtLong(day))}: ${word}" title="${esc(fmtLong(day))}: ${word}"><b>${dd.getDate()}</b>${dd.getDate() === 1 || i === 0 ? `<small>${dd.toLocaleDateString(undefined, { month: 'short' })}</small>` : ''}</li>`;
+/* ---- the booking calendar: first tap is the start, second is the last day, never backwards ----
+   The same rules as the website's booking-calendar.js and the app's DateSelection, and the server's checks. */
+const HORIZON = 180;
+const calOf = (s, t) => {
+  const c = UI[s].cal;
+  if (!c || c.toolId !== t.id) UI[s].cal = { toolId: t.id, start: null, end: null, month: today().slice(0, 7) };
+  return UI[s].cal;
+};
+const heldAt = (toolId, day) => heldFor(toolId).find((b) => b.start <= day && day <= b.end) || null;
+function latestEnd(t, c) {
+  if (!c.start) return null;
+  const limit = addDays(c.start, t.maxDays - 1);
+  const next = heldFor(t.id).find((b) => b.start > c.start);
+  const before = next ? addDays(next.start, -1) : null;
+  return before && before < limit ? before : limit;
+}
+function canPick(t, c, day) {
+  if (c.start && !c.end) return day >= c.start && day <= latestEnd(t, c) && !heldAt(t.id, day);
+  return day >= today() && day <= addDays(today(), HORIZON) && !heldAt(t.id, day);
+}
+function pickDay(t, c, day) {
+  if (!canPick(t, c, day)) return false;
+  if (c.start && !c.end) c.end = day; else { c.start = day; c.end = null; }
+  return true;
+}
+function calSummary(c) {
+  if (!c.start) return 'Pick the first day of the loan.';
+  if (!c.end) return `Collect on ${fmtShort(c.start)}. Now pick the last day. Earlier days cannot be chosen.`;
+  const days = daysBetween(c.start, c.end) + 1;
+  return c.start === c.end ? `${fmtShort(c.start)} (1 day)` : `${fmtShort(c.start)} to ${fmtShort(c.end)} (${days} days)`;
+}
+const fmtShort = (day) => parse(day).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }).replace(',', '');
+
+function calendarHtml(s, t, readOnly) {
+  const c = calOf(s, t);
+  const first = today().slice(0, 7), last = addDays(today(), HORIZON).slice(0, 7);
+  if (c.month < first) c.month = first;
+  const start = parse(`${c.month}-01`);
+  const blanks = (start.getDay() + 6) % 7;
+  const monthLabel = start.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+  let cells = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<span class="cal-wd" aria-hidden="true">${d}</span>`).join('');
+  cells += '<span class="cal-gap" aria-hidden="true"></span>'.repeat(blanks);
+  for (let day = `${c.month}-01`; day.slice(0, 7) === c.month; day = addDays(day, 1)) {
+    const held = heldAt(t.id, day);
+    const pickable = !readOnly && canPick(t, c, day);
+    const inRange = c.start && day >= c.start && (c.end ? day <= c.end : day === c.start);
+    const cls = ['cal-day'];
+    if (held) cls.push(held.status === 'Approved' ? 'cal-booked' : 'cal-requested'); else if (!pickable) cls.push('cal-off');
+    if (day === today()) cls.push('cal-today');
+    if (inRange) cls.push('cal-range');
+    if (day === c.start) cls.push('cal-start');
+    if (day === c.end) cls.push('cal-end');
+    const state = held ? (held.status === 'Approved' ? 'booked' : 'requested') : day === c.start ? 'start of your loan' : day === c.end ? 'last day of your loan' : pickable ? 'free' : 'not available';
+    cells += `<button type="button" class="${cls.join(' ')}" data-action="cal-pick" data-day="${day}"${pickable ? '' : ' disabled'} aria-label="${esc(fmtLong(day))}, ${state}">${parse(day).getDate()}</button>`;
   }
-  return `<ol class="strip" aria-label="Availability for the next six weeks">${html}</ol>
-    <div class="legend">${pill('Free', 'good')}${pill('Requested', 'warn')}${pill('Booked', 'bad')}</div>`;
+  return `<div class="cal">
+    <div class="cal-head"><button type="button" class="cal-nav" data-action="cal-month" data-dir="-1" aria-label="Previous month"${c.month <= first ? ' disabled' : ''}>&lsaquo;</button>
+      <strong>${esc(monthLabel)}</strong>
+      <button type="button" class="cal-nav" data-action="cal-month" data-dir="1" aria-label="Next month"${c.month >= last ? ' disabled' : ''}>&rsaquo;</button></div>
+    <div class="cal-grid">${cells}</div>
+    <p class="legend" style="margin-top:8px"><span class="pill bad">Booked</span><span class="pill warn">Requested</span><span class="pill good">Your dates</span></p>
+    <p class="cal-status">${readOnly ? 'Days in colour are already requested or booked.' : esc(calSummary(c))}</p>
+    ${!readOnly && c.start ? '<button type="button" class="linkish" data-action="cal-clear">Clear dates</button>' : ''}
+  </div>`;
 }
 
 const errorBox = (s) => UI[s].error ? `<div class="notice bad" role="alert"><p>${esc(UI[s].error)}</p></div>` : '';
@@ -609,7 +675,7 @@ function toolView(s, me, id) {
       ${t.listed ? '' : '<div class="notice bad"><p>The owner has paused loans for this tool.</p></div>'}
       ${photos.length ? `<div class="gallery">${photos.map((p) => `<div class="gitem">${photoHtml(p, t.name)}</div>`).join('')}</div>` : '<p class="muted">No photos yet.</p>'}
       ${t.description ? `<p>${esc(t.description)}</p>` : ''}
-      <div class="card"><h3>Next six weeks</h3>${stripHtml(t)}</div>
+      <div class="card"><h3>${mine || !t.listed ? 'Availability' : 'Pick your dates'}</h3>${calendarHtml(s, t, mine || !t.listed)}</div>
       ${mine ? `<div class="row">
           <button type="button" class="btn" data-action="go" data-route="edit" data-id="${t.id}">Edit this listing</button>
           <button type="button" class="btn ghost" data-action="toggle-listed" data-id="${t.id}">${t.listed ? 'Pause loans' : 'Resume loans'}</button>
@@ -617,13 +683,9 @@ function toolView(s, me, id) {
         <p class="muted small">This is your tool, so you cannot book it. Requests appear under Loans.</p>`
       : t.listed ? `<div class="card form">
           <h3>Ask to borrow it</h3>
-          <div class="two">
-            <div class="field"><label for="${s}-start">Collect on</label><input id="${s}-start" type="date" min="${t0}" value="${addDays(t0, 2)}"></div>
-            <div class="field"><label for="${s}-end">Return by</label><input id="${s}-end" type="date" min="${t0}" value="${addDays(t0, 3)}"></div>
-          </div>
           <div class="field"><label for="${s}-note">Note for the owner</label><textarea id="${s}-note" maxlength="1000"></textarea></div>
           <p class="muted small">Loans on this tool run up to ${t.maxDays} day(s).</p>
-          <div><button type="button" class="btn" data-action="request" data-id="${t.id}">Send request</button></div>
+          <div><button type="button" class="btn" data-action="request" data-id="${t.id}"${calOf(s, t).end ? '' : ' disabled'}>Send request</button></div>
         </div>` : ''}
     </div>`;
 }
@@ -961,15 +1023,37 @@ const ACTIONS = {
     renderAll();
   },
 
+  'cal-pick'(s, d) {
+    const t = tool(routeOf(s).id);
+    pickDay(t, calOf(s, t), d.day);
+    renderAll();
+  },
+  'cal-month'(s, d) {
+    const t = tool(routeOf(s).id);
+    const c = calOf(s, t);
+    const [y, m] = c.month.split('-').map(Number);
+    const next = new Date(y, m - 1 + Number(d.dir), 1);
+    c.month = `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`;
+    renderAll();
+  },
+  'cal-clear'(s) {
+    const t = tool(routeOf(s).id);
+    const c = calOf(s, t);
+    c.start = null; c.end = null;
+    renderAll();
+  },
   request(s, d) {
     const id = Number(d.id);
-    const res = requestBooking(me(s), id, val(s, 'start'), val(s, 'end'), val(s, 'note').trim());
+    const c = calOf(s, tool(id));
+    if (!c.start || !c.end) return refuse(s, 'Pick your dates on the calendar first.');
+    const res = requestBooking(me(s), id, c.start, c.end, val(s, 'note').trim());
     if (!res.ok) {
       call(s, `POST /api/v1/tools/${id}/bookings → 400`, `POST /Tools/Details/${id} → 200 (form redisplayed)`);
       return refuse(s, res.error);
     }
     call(s, `POST /api/v1/tools/${id}/bookings → 201`, `POST /Tools/Details/${id} → 302`);
     notify('Requested', res.booking, me(s));
+    UI[s].cal = null;
     done(s, 'Request sent. The owner will see it under Loans.');
   },
   approve(s, d) {

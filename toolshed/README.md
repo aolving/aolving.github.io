@@ -3,8 +3,8 @@
 An invite-only portal where members list the tools they own, photograph them, and
 book each other's tools on loan.
 
-ASP.NET Core 8 Razor Pages, ASP.NET Core Identity, EF Core on SQLite. No JavaScript,
-no CDN, no third-party services — it runs from one process and one data folder.
+ASP.NET Core 8 Razor Pages, ASP.NET Core Identity, EF Core on SQLite. One small script (the
+booking calendar; everything works without it), no CDN, no third-party services — it runs from one process and one data folder.
 
 ## Running it locally
 
@@ -83,7 +83,7 @@ in to your portal and uses the same accounts, tools, photos and loans as the web
 listed on the website is in the app and a loan approved in the app shows on the website.
 
 **What members can do in the app:** sign in, or create an account with their invited email, the six-digit access code and a password, browse and
-search the catalogue, open a tool to see its photos and a six-week availability calendar, request a
+search the catalogue, open a tool to see its photos and pick loan dates on a calendar (tap the first day, then the last), request a
 loan, list their own tools (take or choose photos, set the cover, pause or delete a listing), and
 handle loans — approve or decline with a note, mark returned, cancel, see what is overdue.
 Administration (inviting people, managing members, resetting passwords) stays on the website.
@@ -178,7 +178,7 @@ release signing could be exercised in this repository's CI.
 ## Try it without installing anything
 
 `demo/index.html` (in the repository root) is an interactive demo: the website and the phone app side by side,
-sharing one set of sample data, so you can request a loan on the phone and approve it on the website, and
+sharing one set of sample data, so you can pick dates on the calendar and request a loan on the phone and approve it on the website, and
 generate access codes and join with them. It runs
 entirely in the browser, applies the same booking rules as the server (inclusive dates, no double-booking, loan
 limits, auto-declining competing requests, overdue flags) and the same photo and access-code checks (unique codes, tied and open codes, the lock after five wrong ones, the open-code breaker), and shows
@@ -258,11 +258,35 @@ not an address belongs to a member.
 
 A loan is an inclusive range of days with a status: `Requested`, `Approved`,
 `Declined`, `Cancelled` or `Returned`. Requested and approved loans both hold their
-dates; the rest release them.
+dates; the rest release them. A single day is the shortest loan, and it counts as one day.
 
-- Members request dates on a tool's page, which also shows a six-week availability
-  calendar. Owners approve or decline (with an optional note to the borrower), cancel,
-  or mark a tool returned from **Loans**.
+### Picking the dates
+
+Dates are chosen on **one calendar**, on the website and in the app: the **first day you tap is the start, the
+second is the last day, and you can never go backwards.** Days before the start cannot be tapped. Tapping the
+same day twice is a one-day booking; tapping again after a finished choice starts a fresh one; *Clear dates*
+forgets both.
+
+The calendar only ever offers choices the portal will accept, so a bad booking is not something you can pick
+rather than something you are told off for afterwards. These days are greyed out and cannot be chosen:
+
+- anything in the past, or more than 180 days ahead;
+- days already requested or booked (shown in colour);
+- while choosing the last day: days before the start, days beyond the owner's longest loan, and any day that
+  would run across someone else's booking.
+
+The server checks all of this again, so a hand-made request is refused with a reason (`The return date cannot be
+before the collection date`, `Loans cannot start in the past`, and so on). The same rules are written three times,
+each tested: `DateSelection` in `ToolShed.Client` (the app), `booking-calendar.js` (the website) and the demo, and
+a test checks that whatever the app's calendar lets you pick, the server's own validation accepts.
+
+The website's calendar is a small, optional script (`wwwroot/js/booking-calendar.js`): with scripts off, the page
+keeps two plain date fields and the server enforces the same rules. It is the site's only script, served as its own
+file so the content security policy can keep forbidding inline script.
+
+### The rest of booking
+
+- Owners approve or decline (with an optional note to the borrower), cancel, or mark a tool returned from **Loans**.
 - Overlaps are rejected. The check and the insert share a transaction, so two members
   racing for the same weekend cannot both win.
 - Approving a request auto-declines any other request for the same days.
@@ -286,7 +310,7 @@ dates; the rest release them.
 | CSRF | Antiforgery on every POST, `SameSite=Strict` on the antiforgery cookie. |
 | Photo uploads | Type decided by magic bytes, not file name or `Content-Type`. JPEG/PNG/GIF/WebP only — **SVG is rejected**, since it can carry script. 8 MB and 6 photos per tool. |
 | Stored files | Written outside `wwwroot` under a generated GUID name; served only to signed-in members via `/photos/{id}`. |
-| XSS | Razor encodes by default; a strict CSP (`script-src 'self'`, no inline script or style) backs it up. |
+| XSS | Razor encodes by default; a strict CSP (`script-src 'self'`, no inline script or style) backs it up. The one script, the booking calendar, is a same-origin file that builds the page with `createElement`/`textContent`, never `innerHTML`. |
 | Clickjacking | `frame-ancestors 'none'` and `X-Frame-Options: DENY`. |
 | Transport | HTTPS redirection and HSTS outside Development. |
 | Authorisation | Every tool and booking handler loads its row scoped to the caller's id, so an id in a URL cannot reach someone else's record. |
@@ -305,9 +329,9 @@ dotnet ef migrations add <Name> --project src/ToolShed.Web --output-dir Data/Mig
 
 ## Tests and CI
 
-`dotnet test` runs four layers:
+`dotnet test` runs four layers (plus the calendar script's own tests, below):
 
-- **Rule tests** — date maths, loan-window validation, upload sniffing, access-code format and hashing, token handling.
+- **Rule tests** — date maths, loan-window validation, the calendar's date-selection rules, upload sniffing, access-code format and hashing, token handling.
 - **Service tests** — the booking and access-code rules (uniqueness, lockout, expiry) against a real in-memory SQLite database, so
   queries are translated by the same provider the portal runs on.
 - **Integration tests** — the real app is hosted and driven over HTTP: who gets in, the
@@ -318,7 +342,8 @@ dotnet ef migrations add <Name> --project src/ToolShed.Web --output-dir Data/Mig
   that the website and the API see the same data.
 
 GitHub Actions (`.github/workflows/toolshed-ci.yml`) builds and tests the server on every push,
-then builds the Docker image and smoke-tests the running container. A second workflow
+then builds the Docker image and smoke-tests the running container. The website calendar's rules also have a JavaScript twin of the C# tests, run with Node's built-in runner
+(`cd tests/js && node --test`, no packages), which CI runs too. A second workflow
 (`toolshed-mobile-ci.yml`) builds the mobile app. The app's screens themselves are not covered by
 automated tests; its network layer is, through the API tests above.
 
@@ -334,8 +359,10 @@ toolshed/
     Models/                     ApplicationUser, Tool, ToolPhoto, Booking, Invitation, ApiToken
     Services/                   invitations, bookings, tools, notifications, email, photos, headers
     Pages/                      Razor Pages (Account, Tools, Bookings, Admin)
+    wwwroot/js/                 booking-calendar.js, the website's only script
   src/ToolShed.Contracts/       request/response types shared by the server and the app
   src/ToolShed.Client/          typed HttpClient wrapper for the API (what the app uses)
   src/ToolShed.Mobile/          the iOS and Android app (.NET MAUI); not in ToolShed.sln
   tests/ToolShed.Tests/         rule, service, integration and API tests
+  tests/js/                     the booking calendar's rule tests (Node)
 ```
