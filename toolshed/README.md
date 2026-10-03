@@ -174,6 +174,15 @@ an app icon and name you are happy with, an Apple Developer account with a signi
 provisioning profile for iOS, and a release keystore for Google Play. Neither the iOS app nor the
 release signing could be exercised in this repository's CI.
 
+## Try it without installing anything
+
+`demo/index.html` (in the repository root) is an interactive demo: the website and the phone app side by side,
+sharing one set of sample data, so you can request a loan on the phone and approve it on the website. It runs
+entirely in the browser, applies the same booking rules as the server (inclusive dates, no double-booking, loan
+limits, auto-declining competing requests, overdue flags) and the same photo and invitation checks, and shows
+the API calls and emails each action would cause. It is a simulation for trying the flows: it does not talk to a
+portal, and nothing you do in it is saved. Open the file in a browser, or visit `/demo/` once the site is published.
+
 ## How the invite flow works
 
 1. An admin opens **Invitations**, enters an email address, picks a role and a

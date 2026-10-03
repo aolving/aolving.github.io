@@ -1,0 +1,1109 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tool Shed Demo</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout concept: two real product surfaces (a browser and a phone) side by side on one shared
+   data set, with a plain feed underneath showing what each action would send to the server. */
+:root {
+  --bg: #ebeae6;
+  --panel: #f6f5f2;
+  --surface: #ffffff;
+  --ink: #1d1b18;
+  --ink-soft: #615c54;
+  --line: #d9d6cf;
+  --brand: #8a4b1e;
+  --on-brand: #ffffff;
+  --good: #2f6b3a;
+  --bad: #9a2f2f;
+  --warn: #8a6d1e;
+  --device: #2a2724;
+  --photo-l: 86%;
+  --photo-c: 0.06;
+  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141312; --panel: #1c1a18; --surface: #23201d; --ink: #ece7df; --ink-soft: #a39c91;
+    --line: #3a352f; --brand: #d98f55; --on-brand: #1a1208; --good: #7fbe8c; --bad: #e08585;
+    --warn: #d9bb6a; --device: #0b0a0a; --photo-l: 30%; --photo-c: 0.05; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141312; --panel: #1c1a18; --surface: #23201d; --ink: #ece7df; --ink-soft: #a39c91;
+  --line: #3a352f; --brand: #d98f55; --on-brand: #1a1208; --good: #7fbe8c; --bad: #e08585;
+  --warn: #d9bb6a; --device: #0b0a0a; --photo-l: 30%; --photo-c: 0.05; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+button, input, select, textarea { font: inherit; color: inherit; }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; line-height: 1.1; margin: 0; letter-spacing: 0.01em; text-wrap: balance; }
+p { margin: 0; }
+a { color: var(--brand); }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+
+.page { max-width: 1240px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 48px; display: grid; gap: 20px; }
+.top { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; justify-content: space-between; }
+.top h1 { font-size: 40px; }
+.sub { color: var(--ink-soft); max-width: 60ch; }
+.btn { background: var(--brand); color: var(--on-brand); border: 1px solid transparent; border-radius: 6px; padding: 7px 14px; font-weight: 600; cursor: pointer; }
+.btn:hover { filter: brightness(1.08); }
+.btn.ghost { background: transparent; color: var(--brand); border-color: var(--line); }
+.btn.danger { background: var(--bad); color: #fff; }
+.btn.small { padding: 4px 10px; font-size: 13px; }
+.btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.linkish { background: none; border: 0; padding: 0; color: var(--brand); text-decoration: underline; cursor: pointer; }
+.linkish.danger { color: var(--bad); }
+
+.try { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; }
+.try h2 { font-size: 22px; margin-bottom: 8px; }
+.try ol { margin: 0; padding-left: 20px; display: grid; gap: 4px 28px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+.try li { min-width: 0; }
+.try b { font-weight: 600; }
+
+.tabs { display: none; gap: 6px; }
+.tabs button { flex: 1; padding: 8px; border: 1px solid var(--line); background: var(--panel); border-radius: 8px; cursor: pointer; font-weight: 600; }
+.tabs button[aria-selected="true"] { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
+
+.stage { display: grid; gap: 24px; grid-template-columns: minmax(0, 1fr) 392px; align-items: start; }
+.pane { min-width: 0; }
+@media (max-width: 1000px) {
+  .tabs { display: flex; }
+  .stage { grid-template-columns: minmax(0, 1fr); }
+  .stage[data-view="web"] .pane-phone, .stage[data-view="phone"] .pane-web { display: none; }
+  .pane-phone { display: flex; justify-content: center; }
+}
+
+/* ---------- the two frames ---------- */
+.browser { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); overflow: hidden; display: flex; flex-direction: column; height: 760px; max-height: 88vh; min-height: 520px; }
+.chrome { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }
+.dots { display: flex; gap: 5px; }
+.dots i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.url { flex: 1; min-width: 0; font-family: var(--mono); font-size: 12px; color: var(--ink-soft); background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 3px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.phone { width: 100%; max-width: 392px; height: 760px; max-height: 88vh; min-height: 520px; background: var(--device); border-radius: 38px; padding: 12px; }
+.surface { background: var(--surface); position: relative; min-height: 0; }
+.surface-web { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.surface-phone { height: 100%; border-radius: 28px; overflow: hidden; display: flex; flex-direction: column; }
+
+.web-bar { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--brand); color: var(--on-brand); }
+.web-bar .brand { font-family: var(--display); font-size: 22px; font-weight: 700; }
+.web-nav { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+.web-nav button { background: none; border: 0; color: inherit; cursor: pointer; padding: 2px 0; border-bottom: 2px solid transparent; font-weight: 500; }
+.web-nav button[aria-current="page"] { border-bottom-color: currentColor; font-weight: 600; }
+.who { display: flex; gap: 6px; align-items: center; font-size: 13px; }
+.who select { background: rgba(255,255,255,0.15); color: inherit; border: 1px solid rgba(255,255,255,0.4); border-radius: 5px; padding: 2px 6px; }
+.who select option { color: #1d1b18; }
+.view { flex: 1; overflow: auto; padding: 16px; min-height: 0; }
+.surface-phone .view { padding: 12px; }
+
+.app-bar { display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 8px 12px; background: var(--brand); color: var(--on-brand); font-family: var(--display); font-size: 21px; font-weight: 700; }
+.app-bar button { background: none; border: 0; color: inherit; font-size: 20px; cursor: pointer; padding: 0 6px; }
+.tab-bar { display: grid; grid-template-columns: repeat(4, 1fr); border-top: 1px solid var(--line); background: var(--surface); }
+.tab-bar button { background: none; border: 0; padding: 9px 2px 10px; font-size: 12px; color: var(--ink-soft); cursor: pointer; display: grid; gap: 2px; justify-items: center; }
+.tab-bar button[aria-current="page"] { color: var(--brand); font-weight: 600; }
+.tab-bar svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- shared product views ---------- */
+.surface h2 { font-size: 26px; margin-bottom: 10px; }
+.surface h3 { font-size: 18px; margin-bottom: 6px; }
+.muted { color: var(--ink-soft); }
+.small { font-size: 13px; }
+.stack { display: grid; gap: 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.card { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--surface); min-width: 0; }
+.panel { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--panel); }
+
+.filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.filters input, .filters select { flex: 1 1 140px; min-width: 0; }
+input, select, textarea { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 6px 9px; max-width: 100%; }
+textarea { width: 100%; min-height: 60px; resize: vertical; }
+.field { display: grid; gap: 3px; }
+.field > label { font-weight: 600; font-size: 13px; }
+.field input:not([type="checkbox"]), .field select { width: 100%; }
+.form { display: grid; gap: 10px; }
+.two { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(185px, 1fr)); }
+.surface-phone .grid { grid-template-columns: 1fr; gap: 8px; }
+.tool-card { text-align: left; display: grid; gap: 8px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); cursor: pointer; min-width: 0; }
+.tool-card:hover { border-color: var(--brand); }
+.surface-phone .tool-card { grid-template-columns: 72px minmax(0, 1fr); align-items: center; }
+.tc-body { display: grid; gap: 2px; min-width: 0; }
+.tc-name { font-weight: 600; font-size: 16px; overflow-wrap: anywhere; }
+.tc-meta { font-size: 13px; color: var(--ink-soft); }
+
+.photo { aspect-ratio: 4 / 3; border-radius: 7px; display: grid; place-items: center; overflow: hidden; background: oklch(var(--photo-l) var(--photo-c) var(--hue, 60)); color: oklch(40% 0.1 var(--hue, 60)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .photo { color: oklch(75% 0.09 var(--hue, 60)); } }
+:root[data-theme="dark"] .photo { color: oklch(75% 0.09 var(--hue, 60)); }
+.photo svg { width: 58%; height: 58%; fill: none; stroke: currentColor; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; }
+.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.surface-phone .tool-card .photo { aspect-ratio: 1; }
+.gallery { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.surface-phone .gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gitem { display: grid; gap: 4px; }
+
+.pill { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 9px; border-radius: 999px; border: 1px solid currentColor; width: fit-content; }
+.pill.good { color: var(--good); } .pill.bad { color: var(--bad); } .pill.warn { color: var(--warn); } .pill.mute { color: var(--ink-soft); }
+
+.notice { border: 1px solid currentColor; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
+.notice.bad { color: var(--bad); } .notice.good { color: var(--good); }
+.notice p, .notice code { color: var(--ink); }
+.quote { border-left: 3px solid var(--line); padding-left: 10px; color: var(--ink-soft); font-style: italic; overflow-wrap: anywhere; }
+code { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
+
+.strip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; max-width: 360px; list-style: none; padding: 0; margin: 0; }
+.strip .wd { font-size: 10px; text-align: center; color: var(--ink-soft); }
+.day { aspect-ratio: 1; border: 1px solid var(--line); border-radius: 5px; font-size: 12px; display: grid; place-items: center; position: relative; }
+.day.blank { border: 0; }
+.day.free { color: var(--good); }
+.day.req { color: var(--warn); background: color-mix(in srgb, var(--warn) 16%, transparent); border-color: var(--warn); }
+.day.booked { color: var(--bad); background: color-mix(in srgb, var(--bad) 18%, transparent); border-color: var(--bad); }
+.day b { font-weight: 600; color: var(--ink); }
+.day small { position: absolute; right: 3px; bottom: 1px; font-size: 8px; color: var(--ink-soft); }
+.legend { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+.seg button { padding: 7px; border-radius: 7px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-weight: 600; font-size: 13px; }
+.seg button[aria-pressed="true"] { background: var(--brand); color: var(--on-brand); border-color: var(--brand); }
+
+.toast { position: absolute; left: 12px; right: 12px; bottom: 12px; background: var(--ink); color: var(--bg); border-radius: 8px; padding: 8px 12px; font-size: 14px; opacity: 0; transform: translateY(8px); transition: opacity .2s, transform .2s; pointer-events: none; z-index: 5; }
+.toast.show { opacity: 1; transform: none; }
+.surface-phone .toast { bottom: 64px; }
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.table th, .table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.table th { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-soft); }
+.scroll-x { overflow-x: auto; }
+.empty { color: var(--ink-soft); padding: 24px 8px; text-align: center; }
+
+/* ---------- behind the scenes ---------- */
+.log { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; }
+.log h2 { font-size: 22px; }
+.log .sub { margin: 2px 0 10px; font-size: 13px; }
+.log ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 260px; overflow: auto; }
+.log li { display: flex; gap: 10px; align-items: baseline; font-family: var(--mono); font-size: 12.5px; min-width: 0; }
+.log time { color: var(--ink-soft); flex: none; }
+.chip { flex: none; font-family: var(--body); font-size: 11px; font-weight: 700; border-radius: 4px; padding: 0 6px; border: 1px solid currentColor; }
+.chip.k-phone { color: var(--brand); } .chip.k-web { color: var(--good); } .chip.k-mail { color: var(--warn); }
+.log li span.t { min-width: 0; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <div>
+      <h1>The Tool Shed</h1>
+      <p class="sub">An interactive demo. The website and the phone app below share one set of sample data, so what you do in one shows up in the other.</p>
+    </div>
+    <button class="btn ghost" id="reset" type="button">Reset demo</button>
+  </header>
+
+  <section class="try" aria-labelledby="try-h">
+    <h2 id="try-h">Try this</h2>
+    <ol>
+      <li><b>On the phone</b>, sign in as Ben, open the Cordless drill and send a request.</li>
+      <li><b>On the website</b> you are Olive, the drill's owner. Open Loans, then approve Ben's request with a note.</li>
+      <li><b>Back on the phone</b>, Loans shows Approved with Olive's note, and the drill's calendar is red on both screens.</li>
+      <li><b>On the website</b>, switch to Priya and ask for the same dates. They are already spoken for.</li>
+      <li><b>Invite someone.</b> On the website as Olive, open Invitations and create a link. On the phone, sign out, choose "I have an invitation" and paste it.</li>
+      <li><b>Photos.</b> On My tools, list a tool and press "Try an SVG disguised as a photo". It is refused, because the file's contents decide, not its name.</li>
+    </ol>
+  </section>
+
+  <div class="tabs" role="tablist" aria-label="Choose a screen">
+    <button type="button" role="tab" id="tab-web" aria-selected="false" data-view="web">Website</button>
+    <button type="button" role="tab" id="tab-phone" aria-selected="true" data-view="phone">Phone app</button>
+  </div>
+
+  <main class="stage" id="stage" data-view="phone">
+    <section class="pane pane-web" aria-label="The website">
+      <div class="browser">
+        <div class="chrome"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="url" id="web-url">tools.example.com</span></div>
+        <div id="web" class="surface surface-web" data-surface="web"></div>
+      </div>
+    </section>
+    <section class="pane pane-phone" aria-label="The phone app">
+      <div class="phone"><div id="phone" class="surface surface-phone" data-surface="phone"></div></div>
+    </section>
+  </main>
+
+  <section class="log" aria-labelledby="log-h">
+    <h2 id="log-h">Behind the scenes</h2>
+    <p class="sub">What each action would send to the server, and the emails it would trigger if mail were set up. Simulated here; the real portal does this over HTTPS.</p>
+    <ol id="log" aria-live="polite"></ol>
+  </section>
+</div>
+<script>
+(() => {
+'use strict';
+
+/* ================================================================== helpers */
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const $ = (sel, root = document) => root.querySelector(sel);
+
+const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const parse = (s) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+const today = () => iso(new Date());
+const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
+const daysBetween = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
+const fmt = (s) => parse(s).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+const fmtLong = (s) => parse(s).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+const clock = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+/* ================================================================== sample data */
+const GLYPHS = {
+  drill: '<path d="M16 36h44a9 9 0 0 1 9 9v9H26l-10-9z"/><path d="M69 45h16M85 40v10"/><path d="M38 54l-6 30h15l6-30"/>',
+  ladder: '<path d="M34 10L26 90M66 10l8 80"/><path d="M32 30h36M30 50h40M28 70h44"/>',
+  trimmer: '<path d="M10 58h54"/><path d="M14 58v9M22 58v9M30 58v9M38 58v9M46 58v9M54 58v9"/><path d="M64 44h14a9 9 0 0 1 9 9v14a9 9 0 0 1-9 9H64z"/>',
+  washer: '<rect x="24" y="30" width="36" height="50" rx="9"/><circle cx="42" cy="58" r="8"/><path d="M60 46h14c9 0 11 9 11 17v17"/>',
+  saw: '<circle cx="50" cy="42" r="27"/><circle cx="50" cy="42" r="5"/><path d="M16 80h68"/><path d="M50 15v-7"/>',
+  wrench: '<path d="M64 14a19 19 0 0 0-18 25L14 71a8.5 8.5 0 0 0 12 12l32-32a19 19 0 0 0 25-18l-13 12-10-2-2-10z"/>'
+};
+const TAB_ICONS = {
+  catalogue: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>',
+  mytools: '<path d="M14.5 4.5a4.5 4.5 0 0 0-4.2 6.1L3.5 17.4a1.8 1.8 0 0 0 2.6 2.6l6.8-6.8a4.5 4.5 0 0 0 6.1-4.2l-3 3-2.5-.5-.5-2.5z"/>',
+  loans: '<path d="M4 8h13"/><path d="M13 4l4 4-4 4"/><path d="M20 16H7"/><path d="M11 12l-4 4 4 4"/>',
+  account: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>'
+};
+const TAB_LABELS = { catalogue: 'Catalogue', mytools: 'My tools', loans: 'Loans', account: 'Account' };
+const TABS = Object.keys(TAB_LABELS);
+
+const makeTool = (id, ownerId, name, category, description, pickup, maxDays, glyph, hue) => ({
+  id, ownerId, name, category, description, pickup, maxDays, listed: true,
+  photos: [{ id: id * 100, glyph, hue, cover: true }]
+});
+
+function seed() {
+  const t0 = today();
+  return {
+    members: [
+      { id: 1, name: 'Olive Owner', email: 'olive@example.com', role: 'Admin' },
+      { id: 2, name: 'Ben Borrower', email: 'ben@example.com', role: 'Member' },
+      { id: 3, name: 'Priya Patel', email: 'priya@example.com', role: 'Member' },
+      { id: 4, name: 'Sam Ortiz', email: 'sam@example.com', role: 'Member' }
+    ],
+    tools: [
+      makeTool(1, 1, 'Cordless drill', 'Power tools', '18V drill and driver with two batteries and a charger. Bits are in the case.', 'Garage, side door', 7, 'drill', 45),
+      makeTool(2, 1, 'Extension ladder', 'Ladders', 'Aluminium, extends to 4 m. Please wipe it down before it comes back.', 'Garage, side door', 3, 'ladder', 230),
+      makeTool(3, 2, 'Hedge trimmer', 'Gardening', 'Electric trimmer with a 60 cm blade and a long cable.', 'Back gate', 5, 'trimmer', 150),
+      makeTool(4, 3, 'Pressure washer', 'Cleaning', 'Good for decks and paths. Comes with a 6 m hose.', 'Porch', 3, 'washer', 215),
+      makeTool(5, 4, 'Tile saw', 'Power tools', 'Wet tile saw with a fresh blade. Water tray included.', 'Shed', 4, 'saw', 300),
+      makeTool(6, 3, 'Adjustable wrench set', 'Hand tools', 'Three sizes, in a roll.', 'Porch', 14, 'wrench', 20)
+    ],
+    bookings: [
+      { id: 1, toolId: 3, borrowerId: 3, start: addDays(t0, -6), end: addDays(t0, -2), status: 'Approved', borrowerNote: 'Hedge along the fence.', ownerNote: null },
+      { id: 2, toolId: 5, borrowerId: 2, start: addDays(t0, -1), end: addDays(t0, 2), status: 'Approved', borrowerNote: 'Bathroom floor.', ownerNote: 'Wear goggles!' },
+      { id: 3, toolId: 1, borrowerId: 3, start: addDays(t0, 9), end: addDays(t0, 11), status: 'Requested', borrowerNote: 'Hanging shelves.', ownerNote: null }
+    ],
+    invitations: [],
+    log: [],
+    next: { tool: 7, booking: 4, member: 5, photo: 1000, invitation: 1 }
+  };
+}
+
+let S = seed();
+const freshUI = () => ({
+  web: { memberId: 1, route: { name: 'catalogue', id: null }, filters: { q: '', cat: '' }, error: null, issued: null, toast: null, snap: null },
+  phone: { memberId: null, guest: 'welcome', tab: 'catalogue', stack: [], filters: { q: '', cat: '' }, loansTab: 'in', error: null, toast: null, snap: null }
+});
+let UI = freshUI();
+
+/* ================================================================== domain rules (mirror the server) */
+const member = (id) => S.members.find((m) => m.id === id);
+const tool = (id) => S.tools.find((t) => t.id === id);
+const holds = (b) => b.status === 'Requested' || b.status === 'Approved';
+const overlaps = (a, b) => a.start <= b.end && b.start <= a.end;
+const heldFor = (toolId) => S.bookings.filter((b) => b.toolId === toolId && holds(b)).sort((a, b) => a.start.localeCompare(b.start));
+const isOverdue = (b) => b.status === 'Approved' && b.end < today();
+const coverOf = (t) => t.photos.find((p) => p.cover) || t.photos[0];
+const onLoanUntil = (t) => {
+  const d = today();
+  const b = S.bookings.find((x) => x.toolId === t.id && x.status === 'Approved' && x.start <= d && x.end >= d);
+  return b ? b.end : null;
+};
+const fail = (error) => ({ ok: false, error });
+const ok = (extra = {}) => ({ ok: true, ...extra });
+
+const MAX_DAYS_AHEAD = 180;
+const MAX_PHOTOS = 6;
+const MAX_BYTES = 8 * 1024 * 1024;
+
+function validateRange(start, end, t) {
+  if (!start || !end) return 'Pick both dates.';
+  if (end < start) return 'The return date cannot be before the collection date.';
+  if (start < today()) return 'Loans cannot start in the past.';
+  if (daysBetween(today(), start) > MAX_DAYS_AHEAD) return `Loans can only be booked up to ${MAX_DAYS_AHEAD} days ahead.`;
+  const days = daysBetween(start, end) + 1;
+  if (days > t.maxDays) return `This tool can be borrowed for at most ${t.maxDays} day(s) at a time.`;
+  return null;
+}
+
+function requestBooking(memberId, toolId, start, end, note) {
+  const t = tool(toolId);
+  if (!t) return fail('That tool no longer exists.');
+  if (!t.listed) return fail('The owner has paused loans for this tool.');
+  if (t.ownerId === memberId) return fail('You already own this one.');
+  const err = validateRange(start, end, t);
+  if (err) return fail(err);
+  if (S.bookings.some((b) => b.toolId === toolId && holds(b) && overlaps(b, { start, end }))) {
+    return fail('Those dates are already spoken for. Pick a different window.');
+  }
+  const b = { id: S.next.booking++, toolId, borrowerId: memberId, start, end, status: 'Requested', borrowerNote: note || null, ownerNote: null };
+  S.bookings.push(b);
+  return ok({ booking: b });
+}
+
+const bookingOwnedBy = (id, ownerId) => {
+  const b = S.bookings.find((x) => x.id === id);
+  return b && tool(b.toolId).ownerId === ownerId ? b : null;
+};
+
+function approve(id, ownerId, note) {
+  const b = bookingOwnedBy(id, ownerId);
+  if (!b) return fail('That request is not yours to approve.');
+  if (b.status !== 'Requested') return fail('That request has already been dealt with.');
+  if (S.bookings.some((x) => x.id !== b.id && x.toolId === b.toolId && x.status === 'Approved' && overlaps(x, b))) {
+    return fail('You have already approved another loan over those dates.');
+  }
+  b.status = 'Approved';
+  b.ownerNote = note || null;
+  // Approving one request settles the competing ones for the same days.
+  S.bookings.filter((x) => x.id !== b.id && x.toolId === b.toolId && x.status === 'Requested' && overlaps(x, b)).forEach((x) => {
+    x.status = 'Declined';
+    x.ownerNote = 'Automatically declined: the tool was lent to someone else for those dates.';
+  });
+  return ok({ booking: b });
+}
+
+function decline(id, ownerId, note) {
+  const b = bookingOwnedBy(id, ownerId);
+  if (!b) return fail('That request is not yours to decline.');
+  if (b.status !== 'Requested') return fail('That request has already been dealt with.');
+  b.status = 'Declined';
+  b.ownerNote = note || null;
+  return ok({ booking: b });
+}
+
+function cancel(id, userId) {
+  const b = S.bookings.find((x) => x.id === id);
+  if (!b || (b.borrowerId !== userId && tool(b.toolId).ownerId !== userId)) return fail('That booking is not yours to cancel.');
+  if (!holds(b)) return fail('That booking is already closed.');
+  b.status = 'Cancelled';
+  return ok({ booking: b });
+}
+
+function markReturned(id, ownerId) {
+  const b = bookingOwnedBy(id, ownerId);
+  if (!b) return fail('That loan is not yours to close.');
+  if (b.status !== 'Approved') return fail('Only an approved loan can be marked as returned.');
+  b.status = 'Returned';
+  return ok({ booking: b });
+}
+
+/* ---- photos: the file's bytes decide, never its name or declared type ---- */
+async function inspectImage(file) {
+  if (file.size === 0) return fail('The file is empty.');
+  if (file.size > MAX_BYTES) return fail('Photos must be 8 MB or smaller.');
+  const buf = new Uint8Array(await file.slice(0, 16).arrayBuffer());
+  if (buf.length < 12) return fail('That does not look like an image file.');
+  const starts = (...bytes) => bytes.every((v, i) => buf[i] === v);
+  if (starts(0xFF, 0xD8, 0xFF)) return ok({ type: 'JPEG' });
+  if (starts(0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)) return ok({ type: 'PNG' });
+  if (starts(0x47, 0x49, 0x46, 0x38)) return ok({ type: 'GIF' });
+  if (starts(0x52, 0x49, 0x46, 0x46) && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return ok({ type: 'WebP' });
+  return fail('Only JPEG, PNG, GIF and WebP photos are accepted.');
+}
+const readAsDataUrl = (file) => new Promise((resolve, reject) => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result);
+  r.onerror = () => reject(r.error);
+  r.readAsDataURL(file);
+});
+function attachPhoto(t, photo) {
+  photo.id = S.next.photo++;
+  photo.cover = t.photos.length === 0;
+  t.photos.push(photo);
+}
+
+/* ---- invitations ---- */
+const newToken = () => {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const SITE = 'https://tools.example.com';
+const inviteLink = (token) => `${SITE}/Account/Register?token=${token}`;
+const isTokenShaped = (v) => v.length >= 20 && /^[A-Za-z0-9_-]+$/.test(v);
+function extractToken(input) {
+  const text = (input || '').trim();
+  if (!text) return null;
+  if (/^https?:\/\//i.test(text)) {
+    try {
+      const token = new URL(text).searchParams.get('token');
+      return token && isTokenShaped(token) ? token : null;
+    } catch { return null; }
+  }
+  return isTokenShaped(text) ? text : null;
+}
+const passwordProblem = (p) => (p.length >= 12 && /[a-z]/.test(p) && /[A-Z]/.test(p) && /\d/.test(p) && /[^A-Za-z0-9]/.test(p))
+  ? null : 'Passwords need at least 12 characters, with upper and lower case letters, a digit and a symbol.';
+
+/* ================================================================== the feed */
+function trace(s, text, kind) {
+  S.log.unshift({ time: clock(), s, kind: kind || s, text });
+  S.log.length = Math.min(S.log.length, 40);
+}
+const actor = (s) => `${s === 'web' ? 'Website' : 'Phone'} · ${member(UI[s].memberId)?.name.split(' ')[0] ?? 'guest'}`;
+// Each action leaves the line the matching real call would produce: the app uses the JSON API, the website its page handlers.
+const call = (s, api, web) => trace(s, `${actor(s)}  ${s === 'phone' ? api : web}`);
+const mail = (toId, subject) => trace('mail', `Email to ${member(toId).email}: ${subject}`, 'mail');
+
+function notify(event, b, actorId) {
+  const t = tool(b.toolId), owner = member(t.ownerId), borrower = member(b.borrowerId);
+  const dates = `${fmt(b.start)} to ${fmt(b.end)}`;
+  if (event === 'Requested') mail(owner.id, `${borrower.name.split(' ')[0]} would like to borrow your ${t.name} (${dates})`);
+  else if (event === 'Approved') mail(borrower.id, `Your request for ${t.name} was approved`);
+  else if (event === 'Declined') mail(borrower.id, `Your request for ${t.name} was declined`);
+  else if (event === 'Returned') mail(borrower.id, `${t.name} is marked as returned`);
+  else if (event === 'Cancelled') mail(actorId === borrower.id ? owner.id : borrower.id, `The loan of ${t.name} was cancelled`);
+}
+
+/* ================================================================== navigation */
+const routeOf = (s) => {
+  if (s === 'web') return UI.web.route;
+  const p = UI.phone;
+  if (!p.memberId) return { name: p.guest, id: null };
+  return p.stack.length ? p.stack[p.stack.length - 1] : { name: p.tab, id: null };
+};
+function go(s, name, id = null) {
+  UI[s].error = null;
+  if (s === 'web') { UI.web.route = { name, id }; UI.web.issued = null; }
+  else if (TABS.includes(name)) { UI.phone.tab = name; UI.phone.stack = []; }
+  else UI.phone.stack.push({ name, id });
+  renderAll();
+}
+function back(s) {
+  UI[s].error = null;
+  // Signed out, the invitation screen sits on top of the sign-in screen rather than on the stack.
+  if (s === 'phone' && !UI.phone.memberId) UI.phone.guest = 'welcome';
+  else if (s === 'phone') UI.phone.stack.pop();
+  else UI.web.route = { name: 'catalogue', id: null };
+  renderAll();
+}
+
+/* ================================================================== view pieces */
+const pill = (text, kind) => `<span class="pill ${kind}">${esc(text)}</span>`;
+
+function photoHtml(p, alt) {
+  if (!p) return '<div class="photo" aria-hidden="true"></div>';
+  if (p.dataUrl) return `<div class="photo"><img src="${p.dataUrl}" alt="${esc(alt)}"></div>`;
+  return `<div class="photo" style="--hue:${p.hue}" role="img" aria-label="${esc(alt)}"><svg viewBox="0 0 100 100" aria-hidden="true">${GLYPHS[p.glyph] || GLYPHS.wrench}</svg></div>`;
+}
+
+function statusPill(t) {
+  if (!t.listed) return pill('Paused', 'bad');
+  const until = onLoanUntil(t);
+  return until ? pill(`On loan until ${fmt(until)}`, 'bad') : pill('Available', 'good');
+}
+
+function toolCard(t, me) {
+  const mine = t.ownerId === me.id;
+  return `<button type="button" class="tool-card" data-action="go" data-route="tool" data-id="${t.id}">
+    ${photoHtml(coverOf(t), t.name)}
+    <span class="tc-body"><span class="tc-name">${esc(t.name)}</span>
+    <span class="tc-meta">${esc(t.category)} · ${mine ? 'yours' : esc(member(t.ownerId).name)}</span>
+    ${statusPill(t)}</span></button>`;
+}
+
+function stripHtml(t) {
+  const t0 = today();
+  const blanks = (parse(t0).getDay() + 6) % 7;
+  const held = heldFor(t.id);
+  let html = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<li class="wd" aria-hidden="true">${d}</li>`).join('');
+  html += '<li class="day blank" aria-hidden="true"></li>'.repeat(blanks);
+  for (let i = 0; i < 42; i++) {
+    const day = addDays(t0, i);
+    const covering = held.filter((b) => b.start <= day && day <= b.end);
+    const state = covering.some((b) => b.status === 'Approved') ? 'booked' : covering.length ? 'req' : 'free';
+    const word = { booked: 'booked', req: 'requested', free: 'free' }[state];
+    const dd = parse(day);
+    html += `<li class="day ${state}" aria-label="${esc(fmtLong(day))}: ${word}" title="${esc(fmtLong(day))}: ${word}"><b>${dd.getDate()}</b>${dd.getDate() === 1 || i === 0 ? `<small>${dd.toLocaleDateString(undefined, { month: 'short' })}</small>` : ''}</li>`;
+  }
+  return `<ol class="strip" aria-label="Availability for the next six weeks">${html}</ol>
+    <div class="legend">${pill('Free', 'good')}${pill('Requested', 'warn')}${pill('Booked', 'bad')}</div>`;
+}
+
+const errorBox = (s) => UI[s].error ? `<div class="notice bad" role="alert"><p>${esc(UI[s].error)}</p></div>` : '';
+
+/* ================================================================== views */
+function catalogueView(s, me) {
+  const f = UI[s].filters;
+  const cats = [...new Set(S.tools.filter((t) => t.listed).map((t) => t.category))].sort();
+  const q = f.q.trim().toLowerCase();
+  const list = S.tools
+    .filter((t) => t.listed && (!q || t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)) && (!f.cat || t.category === f.cat))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return `<h2>What the shed has</h2>
+    <div class="filters">
+      <input id="${s}-q" type="search" placeholder="Search tools" value="${esc(f.q)}" data-input="q" aria-label="Search tools">
+      <select id="${s}-cat" data-change="cat" aria-label="Category">
+        <option value="">All categories</option>
+        ${cats.map((c) => `<option value="${esc(c)}"${f.cat === c ? ' selected' : ''}>${esc(c)}</option>`).join('')}
+      </select>
+    </div>
+    ${list.length ? `<div class="grid">${list.map((t) => toolCard(t, me)).join('')}</div>` : '<p class="empty">Nothing matches yet.</p>'}`;
+}
+
+function toolView(s, me, id) {
+  const t = tool(id);
+  if (!t) return '<p class="empty">That tool does not exist.</p>';
+  const owner = member(t.ownerId);
+  const mine = t.ownerId === me.id;
+  const photos = [...t.photos].sort((a, b) => Number(b.cover) - Number(a.cover));
+  const t0 = today();
+  return `${errorBox(s)}
+    <div class="stack">
+      <div>
+        <h2>${esc(t.name)}</h2>
+        <p class="muted">${esc(t.category)} · ${mine ? 'yours' : `owned by ${esc(owner.name)}`}${t.pickup ? ` · collect from ${esc(t.pickup)}` : ''}</p>
+      </div>
+      ${t.listed ? '' : '<div class="notice bad"><p>The owner has paused loans for this tool.</p></div>'}
+      ${photos.length ? `<div class="gallery">${photos.map((p) => `<div class="gitem">${photoHtml(p, t.name)}</div>`).join('')}</div>` : '<p class="muted">No photos yet.</p>'}
+      ${t.description ? `<p>${esc(t.description)}</p>` : ''}
+      <div class="card"><h3>Next six weeks</h3>${stripHtml(t)}</div>
+      ${mine ? `<div class="row">
+          <button type="button" class="btn" data-action="go" data-route="edit" data-id="${t.id}">Edit this listing</button>
+          <button type="button" class="btn ghost" data-action="toggle-listed" data-id="${t.id}">${t.listed ? 'Pause loans' : 'Resume loans'}</button>
+        </div>
+        <p class="muted small">This is your tool, so you cannot book it. Requests appear under Loans.</p>`
+      : t.listed ? `<div class="card form">
+          <h3>Ask to borrow it</h3>
+          <div class="two">
+            <div class="field"><label for="${s}-start">Collect on</label><input id="${s}-start" type="date" min="${t0}" value="${addDays(t0, 2)}"></div>
+            <div class="field"><label for="${s}-end">Return by</label><input id="${s}-end" type="date" min="${t0}" value="${addDays(t0, 3)}"></div>
+          </div>
+          <div class="field"><label for="${s}-note">Note for the owner</label><textarea id="${s}-note" maxlength="1000"></textarea></div>
+          <p class="muted small">Loans on this tool run up to ${t.maxDays} day(s).</p>
+          <div><button type="button" class="btn" data-action="request" data-id="${t.id}">Send request</button></div>
+        </div>` : ''}
+    </div>`;
+}
+
+function myToolsView(s, me) {
+  const mine = S.tools.filter((t) => t.ownerId === me.id).sort((a, b) => a.name.localeCompare(b.name));
+  return `<h2>My tools</h2>
+    <div class="row" style="margin-bottom:12px"><button type="button" class="btn" data-action="go" data-route="edit" data-id="">List a tool</button></div>
+    ${mine.length ? `<div class="grid">${mine.map((t) => {
+      const waiting = S.bookings.filter((b) => b.toolId === t.id && b.status === 'Requested').length;
+      return toolCard(t, me).replace('</span></button>', `${waiting ? pill(`${waiting} request waiting`, 'warn') : ''}</span></button>`);
+    }).join('')}</div>` : '<p class="empty">You have not listed anything yet.</p>'}`;
+}
+
+function editView(s, me, id) {
+  const t = id ? tool(id) : null;
+  if (id && (!t || t.ownerId !== me.id)) return '<p class="empty">That tool does not exist, or it is not yours.</p>';
+  const v = t || { name: '', category: '', description: '', pickup: '', maxDays: 14, listed: true, photos: [] };
+  const key = id || 'new';
+  return `${errorBox(s)}
+    <h2>${t ? 'Edit tool' : 'List a tool'}</h2>
+    <div class="form">
+      <div class="field"><label for="${s}-name">Name</label><input id="${s}-name" maxlength="120" value="${esc(v.name)}"></div>
+      <div class="field"><label for="${s}-category">Category</label><input id="${s}-category" maxlength="60" placeholder="Power tools, Gardening, ..." value="${esc(v.category)}"></div>
+      <div class="field"><label for="${s}-desc">Description</label><textarea id="${s}-desc" maxlength="2000">${esc(v.description)}</textarea></div>
+      <div class="field"><label for="${s}-pickup">Collection point</label><input id="${s}-pickup" maxlength="120" value="${esc(v.pickup)}"></div>
+      <div class="field"><label for="${s}-days">Longest single loan (days)</label><input id="${s}-days" type="number" min="1" max="90" value="${v.maxDays}"></div>
+      <div class="field"><label><input id="${s}-listed" type="checkbox"${v.listed ? ' checked' : ''}> Listed in the catalogue and open to requests</label></div>
+      <div><button type="button" class="btn" data-action="save-tool" data-id="${id || ''}">Save</button></div>
+    </div>
+
+    <h3 style="margin-top:20px">Photos (${v.photos.length} of ${MAX_PHOTOS})</h3>
+    <div class="stack">
+      ${v.photos.length ? `<div class="gallery">${[...v.photos].sort((a, b) => Number(b.cover) - Number(a.cover)).map((p) => `<div class="gitem">${photoHtml(p, v.name)}
+        <div class="row">${p.cover ? pill('Cover photo', 'good') : `<button type="button" class="linkish" data-action="make-cover" data-id="${key}" data-photo="${p.id}">Make cover</button>`}
+        <button type="button" class="linkish danger" data-action="delete-photo" data-id="${key}" data-photo="${p.id}">Delete</button></div></div>`).join('')}</div>` : ''}
+      <div class="field"><label for="${s}-file">Choose a photo from this device</label><input id="${s}-file" type="file" accept="image/*" data-change="photo" data-id="${id || ''}"></div>
+      <div class="row">
+        <button type="button" class="btn ghost small" data-action="sample-photo" data-id="${id || ''}">Add a sample photo</button>
+        <button type="button" class="btn ghost small" data-action="bad-photo" data-id="${id || ''}">Try an SVG disguised as a photo</button>
+      </div>
+      <p class="muted small">JPEG, PNG, GIF or WebP, up to 8 MB. A file is judged by its contents, so renaming an SVG to .png does not get it through.</p>
+    </div>
+    ${t ? `<div class="panel" style="margin-top:20px"><h3>Remove this tool</h3><p class="muted small" style="margin-bottom:8px">Deleting the listing also deletes its photos and its loan history.</p><button type="button" class="btn danger" data-action="delete-tool" data-id="${t.id}">Delete listing</button></div>` : ''}`;
+}
+
+function bookingCard(s, b, role, me) {
+  const t = tool(b.toolId);
+  const other = member(role === 'in' ? b.borrowerId : t.ownerId);
+  const kind = { Requested: 'warn', Approved: 'good', Declined: 'bad', Cancelled: 'bad', Returned: 'mute' }[b.status];
+  const dates = b.start === b.end ? fmtLong(b.start) : `${fmt(b.start)} to ${fmt(b.end)}, ${parse(b.end).getFullYear()}`;
+  const notes = [b.borrowerNote ? `<p class="quote">${esc(b.borrowerNote)}</p>` : '', b.ownerNote ? `<p class="quote">${esc(b.ownerNote)}</p>` : ''].join('');
+  let actions = '';
+  if (role === 'in' && b.status === 'Requested') {
+    actions = `<div class="field"><label class="small muted" for="${s}-onote-${b.id}">Optional note to the borrower</label><input id="${s}-onote-${b.id}" maxlength="1000"></div>
+      <div class="row"><button type="button" class="btn small" data-action="approve" data-id="${b.id}">Approve</button>
+      <button type="button" class="btn danger small" data-action="decline" data-id="${b.id}">Decline</button></div>`;
+  } else if (role === 'in' && b.status === 'Approved') {
+    actions = `<div class="row"><button type="button" class="btn small" data-action="returned" data-id="${b.id}">Mark returned</button>
+      <button type="button" class="btn danger small" data-action="cancel" data-id="${b.id}">Cancel loan</button></div>`;
+  } else if (role === 'out' && holds(b)) {
+    actions = `<div class="row"><button type="button" class="btn danger small" data-action="cancel" data-id="${b.id}">Cancel</button></div>`;
+  }
+  return `<div class="card stack">
+    <div><strong>${esc(t.name)}</strong> ${role === 'in' ? 'for' : 'from'} <strong>${esc(other.name)}</strong><br><span class="muted small">${dates}</span></div>
+    <div class="row">${pill(b.status, kind)}${isOverdue(b) ? pill('Overdue', 'bad') : ''}</div>
+    ${notes}${actions}</div>`;
+}
+
+function loansView(s, me) {
+  const incoming = S.bookings.filter((b) => tool(b.toolId).ownerId === me.id)
+    .sort((a, b) => (a.status === 'Requested' ? 0 : 1) - (b.status === 'Requested' ? 0 : 1) || a.start.localeCompare(b.start));
+  const outgoing = S.bookings.filter((b) => b.borrowerId === me.id).sort((a, b) => b.start.localeCompare(a.start));
+  const inHtml = incoming.length ? incoming.map((b) => bookingCard(s, b, 'in', me)).join('') : '<p class="empty">Nobody has asked to borrow anything.</p>';
+  const outHtml = outgoing.length ? outgoing.map((b) => bookingCard(s, b, 'out', me)).join('') : '<p class="empty">You have not requested anything.</p>';
+  if (s === 'web') {
+    return `${errorBox(s)}<h2>Loans</h2><div class="stack"><h3>Requests for my tools</h3>${inHtml}<h3>Tools I have asked for</h3>${outHtml}</div>`;
+  }
+  const tab = UI.phone.loansTab;
+  return `${errorBox(s)}<div class="seg">
+      <button type="button" data-action="loans-tab" data-tab="in" aria-pressed="${tab === 'in'}">Requests for my tools</button>
+      <button type="button" data-action="loans-tab" data-tab="out" aria-pressed="${tab === 'out'}">My requests</button>
+    </div><div class="stack">${tab === 'in' ? inHtml : outHtml}</div>`;
+}
+
+function invitationsView(s, me) {
+  if (me.role !== 'Admin') return '<h2>Not allowed</h2><p>Your account does not have access to that page.</p>';
+  const issued = UI.web.issued;
+  return `${errorBox(s)}<h2>Invitations</h2>
+    <p class="muted" style="margin-bottom:10px">An invitation is the only way in. Each one is single use, tied to one email address and expires on its own.</p>
+    ${issued ? `<div class="notice good"><p>Invitation for <strong>${esc(issued.email)}</strong>. Send this link to that address now. It is shown once and cannot be recovered afterwards.</p>
+      <p style="margin-top:6px"><code id="web-issued-link">${esc(issued.link)}</code></p>
+      <p style="margin-top:6px"><button type="button" class="btn small" data-action="copy-link">Copy link</button></p></div>` : ''}
+    <div class="card form" style="margin-bottom:14px">
+      <h3>Invite someone</h3>
+      <div class="two">
+        <div class="field"><label for="web-inv-email">Their email</label><input id="web-inv-email" type="email" maxlength="200" placeholder="taylor@example.com"></div>
+        <div class="field"><label for="web-inv-role">Role</label><select id="web-inv-role"><option>Member</option><option>Admin</option></select></div>
+      </div>
+      <div><button type="button" class="btn" data-action="create-invite">Create invitation</button></div>
+    </div>
+    <div class="card"><h3>Outstanding and recent</h3>
+      ${S.invitations.length ? `<div class="scroll-x"><table class="table"><thead><tr><th>Email</th><th>Role</th><th>State</th><th></th></tr></thead><tbody>
+        ${[...S.invitations].reverse().map((i) => `<tr><td>${esc(i.email)}</td><td>${i.role}</td><td>${i.status}</td><td>${i.status === 'Waiting' ? `<button type="button" class="linkish danger" data-action="revoke-invite" data-id="${i.id}">Revoke</button>` : ''}</td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">No invitations yet.</p>'}
+    </div>`;
+}
+
+function accountView(s, me) {
+  return `<div class="card stack"><div><h2 style="margin:0">${esc(me.name)}</h2><p class="muted">${esc(me.email)}</p><p class="muted small">${me.role === 'Admin' ? 'Administrator' : 'Member'} · tools.example.com</p></div></div>
+    ${me.role === 'Admin' ? '<p class="muted small" style="margin:10px 0">You are an administrator. Inviting people and managing members is done on the website.</p>' : ''}
+    <div class="stack" style="margin-top:12px"><button type="button" class="btn danger" data-action="sign-out">Sign out</button></div>`;
+}
+
+function welcomeView() {
+  return `<div class="stack" style="padding:8px 4px">
+    <div><h2 style="font-size:34px;margin:0">The Tool Shed</h2><p class="muted">Borrow well, return clean.</p></div>
+    ${errorBox('phone')}
+    <div class="panel"><p class="small muted" style="margin-bottom:8px">Demo shortcut. The real app asks for your portal address, email and password.</p>
+      <div class="stack">${S.members.map((m) => `<button type="button" class="btn ghost" data-action="phone-sign-in" data-id="${m.id}">Sign in as ${esc(m.name)}</button>`).join('')}</div></div>
+    <button type="button" class="linkish" data-action="go-invite" style="text-align:center">I have an invitation</button>
+    <p class="small muted" style="text-align:center">This portal is invite only. Forgotten your password? Ask an administrator for a reset link.</p></div>`;
+}
+
+function inviteView() {
+  return `${errorBox('phone')}<h2>Accept an invitation</h2>
+    <p class="muted" style="margin-bottom:10px">Paste the invitation link you were sent, then choose a name and password.</p>
+    <div class="form">
+      <div class="field"><label for="phone-inv-link">Invitation link</label><input id="phone-inv-link" placeholder="https://tools.example.com/Account/Register?token=..." autocomplete="off"></div>
+      <div class="field"><label for="phone-inv-name">Your name</label><input id="phone-inv-name" maxlength="80"></div>
+      <div class="field"><label for="phone-inv-pw">Password</label><input id="phone-inv-pw" type="password" autocomplete="new-password"></div>
+      <p class="muted small">At least 12 characters, with upper and lower case, a digit and a symbol.</p>
+      <div class="field"><label for="phone-inv-pw2">Confirm password</label><input id="phone-inv-pw2" type="password" autocomplete="new-password"></div>
+      <div><button type="button" class="btn" data-action="join">Create my account</button></div>
+      <div><button type="button" class="linkish" data-action="back">Back to sign in</button></div>
+    </div>`;
+}
+
+function pageView(s, me, route) {
+  switch (route.name) {
+    case 'catalogue': return catalogueView(s, me);
+    case 'tool': return toolView(s, me, route.id);
+    case 'mytools': return myToolsView(s, me);
+    case 'edit': return editView(s, me, route.id);
+    case 'loans': return loansView(s, me);
+    case 'invitations': return invitationsView(s, me);
+    case 'account': return accountView(s, me);
+    case 'welcome': return welcomeView();
+    case 'invite': return inviteView();
+    default: return '<p class="empty">Page not found.</p>';
+  }
+}
+
+/* ================================================================== chrome */
+const WEB_PATHS = {
+  catalogue: () => '/', mytools: () => '/Tools/Mine', loans: () => '/Bookings', invitations: () => '/Admin/Invitations',
+  tool: (r) => `/Tools/Details/${r.id}`, edit: (r) => (r.id ? `/Tools/Edit/${r.id}` : '/Tools/Create')
+};
+const PHONE_TITLES = { catalogue: 'Catalogue', mytools: 'My tools', loans: 'Loans', account: 'Account', tool: 'Tool', edit: 'Edit tool', welcome: 'Sign in', invite: 'Invitation' };
+
+function webHtml() {
+  const me = member(UI.web.memberId);
+  const route = UI.web.route;
+  const links = [['catalogue', 'Catalogue'], ['mytools', 'My tools'], ['loans', 'Loans']];
+  if (me.role === 'Admin') links.push(['invitations', 'Invitations']);
+  const active = route.name === 'tool' || route.name === 'edit' ? (route.name === 'edit' ? 'mytools' : 'catalogue') : route.name;
+  return `<div class="web-bar">
+      <span class="brand">The Tool Shed</span>
+      <nav class="web-nav" aria-label="Main">${links.map(([r, label]) => `<button type="button" data-action="go" data-route="${r}"${active === r ? ' aria-current="page"' : ''}>${label}</button>`).join('')}</nav>
+      <label class="who">Signed in as
+        <select id="web-member" data-change="web-member">${S.members.map((m) => `<option value="${m.id}"${m.id === me.id ? ' selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
+    </div>
+    <div class="view" data-rk="web:${route.name}:${route.id}">${pageView('web', me, route)}</div>
+    <div class="toast" id="web-toast" role="status"></div>`;
+}
+
+function phoneHtml() {
+  const p = UI.phone;
+  const me = p.memberId ? member(p.memberId) : null;
+  const route = routeOf('phone');
+  const canBack = !me ? route.name === 'invite' : p.stack.length > 0;
+  const tabs = me ? `<nav class="tab-bar" aria-label="Main">${TABS.map((t) => `<button type="button" data-action="go" data-route="${t}"${p.tab === t && !p.stack.length ? ' aria-current="page"' : ''}>
+      <svg viewBox="0 0 24 24" aria-hidden="true">${TAB_ICONS[t]}</svg>${TAB_LABELS[t]}</button>`).join('')}</nav>` : '';
+  return `${me || route.name === 'invite' ? `<div class="app-bar">${canBack ? '<button type="button" data-action="back" aria-label="Back">‹</button>' : ''}<span>${PHONE_TITLES[route.name] || ''}</span></div>` : ''}
+    <div class="view" data-rk="phone:${route.name}:${route.id}">${pageView('phone', me, route)}</div>
+    ${tabs}
+    <div class="toast" id="phone-toast" role="status"></div>`;
+}
+
+/* ================================================================== rendering (keeps what you were typing) */
+function snapshot(s) {
+  const root = $(`#${s}`);
+  const view = root.querySelector('.view');
+  const snap = { rk: view ? view.dataset.rk : null, values: {}, focus: null, scroll: view ? view.scrollTop : 0 };
+  root.querySelectorAll('input[id], textarea[id], select[id]').forEach((el) => {
+    if (el.type === 'file') return;
+    snap.values[el.id] = el.type === 'checkbox' ? el.checked : el.value;
+  });
+  const a = document.activeElement;
+  if (a && a.id && root.contains(a)) snap.focus = { id: a.id, start: a.selectionStart, end: a.selectionEnd };
+  UI[s].snap = snap;
+}
+function restore(s) {
+  const snap = UI[s].snap;
+  const root = $(`#${s}`);
+  const view = root.querySelector('.view');
+  if (!snap || !view) return;
+  if (snap.rk === view.dataset.rk) {
+    Object.entries(snap.values).forEach(([id, value]) => {
+      const el = document.getElementById(id);
+      if (!el || !root.contains(el)) return;
+      if (el.type === 'checkbox') el.checked = value; else el.value = value;
+    });
+    view.scrollTop = snap.scroll;
+    if (snap.focus) {
+      const el = document.getElementById(snap.focus.id);
+      if (el) {
+        el.focus({ preventScroll: true });
+        try { if (snap.focus.start != null) el.setSelectionRange(snap.focus.start, snap.focus.end); } catch { /* not a text field */ }
+      }
+    }
+  }
+}
+function renderSurface(s) {
+  snapshot(s);
+  $(`#${s}`).innerHTML = s === 'web' ? webHtml() : phoneHtml();
+  restore(s);
+  const toast = UI[s].toast;
+  const el = $(`#${s}-toast`);
+  if (toast && el) { el.textContent = toast.msg; el.classList.add('show'); }
+}
+function renderLog() {
+  $('#log').innerHTML = S.log.length
+    ? S.log.map((e) => `<li><time>${e.time}</time><span class="chip k-${e.kind}">${e.kind === 'mail' ? 'Email' : e.kind === 'web' ? 'Website' : 'Phone'}</span><span class="t">${esc(e.text.replace(/^(Website|Phone) · /, ''))}</span></li>`).join('')
+    : '<li class="muted">Nothing yet. Try a step above.</li>';
+  $('#web-url').textContent = `tools.example.com${(WEB_PATHS[UI.web.route.name] || (() => '/'))(UI.web.route)}`;
+}
+function renderAll() { renderSurface('web'); renderSurface('phone'); renderLog(); }
+
+let toastTimers = {};
+function toast(s, msg) {
+  UI[s].toast = { msg };
+  const el = $(`#${s}-toast`);
+  if (el) { el.textContent = msg; el.classList.add('show'); }
+  clearTimeout(toastTimers[s]);
+  toastTimers[s] = setTimeout(() => {
+    UI[s].toast = null;
+    const e = $(`#${s}-toast`);
+    if (e) e.classList.remove('show');
+  }, 3500);
+}
+
+/* ================================================================== actions */
+const val = (s, id) => { const el = $(`#${s}-${id}`); return el ? el.value : ''; };
+const me = (s) => UI[s].memberId;
+const done = (s, message) => { UI[s].error = null; toast(s, message); renderAll(); };
+const refuse = (s, error) => { UI[s].error = error; renderAll(); };
+
+function readToolForm(s) {
+  const name = val(s, 'name').trim(), category = val(s, 'category').trim();
+  if (name.length < 2) return fail('Give the tool a name.');
+  if (category.length < 2) return fail('Enter a category so people can find it.');
+  const days = Number(val(s, 'days'));
+  if (!Number.isInteger(days) || days < 1 || days > 90) return fail('Loans can run from 1 to 90 days.');
+  return ok({ fields: { name, category, description: val(s, 'desc').trim(), pickup: val(s, 'pickup').trim(), maxDays: days, listed: $(`#${s}-listed`).checked } });
+}
+
+// Saves the listing (creating it first if it is new) so photos have something to belong to.
+function saveTool(s, id) {
+  const read = readToolForm(s);
+  if (!read.ok) return read;
+  if (id) {
+    const t = tool(id);
+    Object.assign(t, read.fields);
+    call(s, `PUT /api/v1/tools/${id} → 200`, `POST /Tools/Edit/${id}?handler=Save → 302`);
+    return ok({ tool: t, created: false });
+  }
+  const t = { id: S.next.tool++, ownerId: me(s), photos: [], ...read.fields };
+  S.tools.push(t);
+  call(s, `POST /api/v1/tools → 201`, `POST /Tools/Create → 302`);
+  return ok({ tool: t, created: true });
+}
+
+async function addPhotoFile(s, id, file) {
+  const saved = saveTool(s, id);
+  if (!saved.ok) return refuse(s, saved.error);
+  const t = saved.tool;
+  if (t.photos.length >= MAX_PHOTOS) return refuse(s, `A listing can have up to ${MAX_PHOTOS} photos. Delete one to add another.`);
+  const check = await inspectImage(file);
+  if (!check.ok) {
+    call(s, `POST /api/v1/tools/${t.id}/photos → 400 ${check.error}`, `POST /Tools/Edit/${t.id}?handler=AddPhotos → 302 (${check.error})`);
+    if (saved.created) retarget(s, t.id);
+    return refuse(s, check.error);
+  }
+  attachPhoto(t, { dataUrl: await readAsDataUrl(file) });
+  call(s, `POST /api/v1/tools/${t.id}/photos → 201 (${check.type}, ${(file.size / 1024).toFixed(0)} KB)`, `POST /Tools/Edit/${t.id}?handler=AddPhotos → 302 (${check.type})`);
+  if (saved.created) retarget(s, t.id);
+  done(s, 'Photo added.');
+}
+// After a brand-new listing is saved, keep the member on that listing's edit screen.
+function retarget(s, id) {
+  if (s === 'web') UI.web.route = { name: 'edit', id };
+  else UI.phone.stack[UI.phone.stack.length - 1] = { name: 'edit', id };
+}
+
+const ACTIONS = {
+  go(s, d) { go(s, d.route, d.id ? Number(d.id) : null); },
+  back(s) { back(s); },
+  'loans-tab'(s, d) { UI.phone.loansTab = d.tab; renderAll(); },
+  'go-invite'() { UI.phone.guest = 'invite'; UI.phone.error = null; renderAll(); },
+
+  'phone-sign-in'(s, d) {
+    UI.phone.memberId = Number(d.id); UI.phone.tab = 'catalogue'; UI.phone.stack = []; UI.phone.error = null;
+    call('phone', 'POST /api/v1/auth/login → 200 (device token issued)', '');
+    renderAll();
+  },
+  'sign-out'() {
+    call('phone', 'POST /api/v1/auth/logout → 204 (token revoked)', '');
+    UI.phone.memberId = null; UI.phone.guest = 'welcome'; UI.phone.stack = []; UI.phone.error = null;
+    renderAll();
+  },
+
+  request(s, d) {
+    const id = Number(d.id);
+    const res = requestBooking(me(s), id, val(s, 'start'), val(s, 'end'), val(s, 'note').trim());
+    if (!res.ok) {
+      call(s, `POST /api/v1/tools/${id}/bookings → 400`, `POST /Tools/Details/${id} → 200 (form redisplayed)`);
+      return refuse(s, res.error);
+    }
+    call(s, `POST /api/v1/tools/${id}/bookings → 201`, `POST /Tools/Details/${id} → 302`);
+    notify('Requested', res.booking, me(s));
+    done(s, 'Request sent. The owner will see it under Loans.');
+  },
+  approve(s, d) {
+    const id = Number(d.id);
+    const res = approve(id, me(s), val(s, `onote-${id}`).trim());
+    if (!res.ok) return refuse(s, res.error);
+    call(s, `POST /api/v1/bookings/${id}/approve → 200`, `POST /Bookings?handler=Approve → 302`);
+    notify('Approved', res.booking, me(s));
+    done(s, 'Approved.');
+  },
+  decline(s, d) {
+    const id = Number(d.id);
+    const res = decline(id, me(s), val(s, `onote-${id}`).trim());
+    if (!res.ok) return refuse(s, res.error);
+    call(s, `POST /api/v1/bookings/${id}/decline → 200`, `POST /Bookings?handler=Decline → 302`);
+    notify('Declined', res.booking, me(s));
+    done(s, 'Declined.');
+  },
+  returned(s, d) {
+    const id = Number(d.id);
+    const res = markReturned(id, me(s));
+    if (!res.ok) return refuse(s, res.error);
+    call(s, `POST /api/v1/bookings/${id}/returned → 200`, `POST /Bookings?handler=Returned → 302`);
+    notify('Returned', res.booking, me(s));
+    done(s, 'Marked as returned.');
+  },
+  cancel(s, d) {
+    const id = Number(d.id);
+    const res = cancel(id, me(s));
+    if (!res.ok) return refuse(s, res.error);
+    call(s, `POST /api/v1/bookings/${id}/cancel → 200`, `POST /Bookings?handler=Cancel → 302`);
+    notify('Cancelled', res.booking, me(s));
+    done(s, 'Cancelled.');
+  },
+
+  'toggle-listed'(s, d) {
+    const t = tool(Number(d.id));
+    t.listed = !t.listed;
+    call(s, `PUT /api/v1/tools/${t.id} → 200 (listed: ${t.listed})`, `POST /Tools/Edit/${t.id}?handler=Save → 302`);
+    done(s, t.listed ? 'Loans resumed.' : 'Loans paused. It is hidden from the catalogue.');
+  },
+  'save-tool'(s, d) {
+    const res = saveTool(s, d.id ? Number(d.id) : null);
+    if (!res.ok) return refuse(s, res.error);
+    UI[s].error = null;
+    if (s === 'phone') UI.phone.stack.pop(); else UI.web.route = { name: 'tool', id: res.tool.id };
+    toast(s, res.created ? `"${res.tool.name}" is now in the catalogue.` : 'Listing updated.');
+    renderAll();
+  },
+  'delete-tool'(s, d) {
+    const id = Number(d.id);
+    const t = tool(id);
+    S.bookings = S.bookings.filter((b) => b.toolId !== id);
+    S.tools = S.tools.filter((x) => x.id !== id);
+    call(s, `DELETE /api/v1/tools/${id} → 204`, `POST /Tools/Edit/${id}?handler=Delete → 302`);
+    UI.web.route = { name: 'mytools', id: null };
+    UI.phone.stack = []; UI.phone.tab = 'mytools';
+    toast(s, `"${t.name}" was deleted.`);
+    renderAll();
+  },
+
+  'sample-photo'(s, d) {
+    const saved = saveTool(s, d.id ? Number(d.id) : null);
+    if (!saved.ok) return refuse(s, saved.error);
+    const t = saved.tool;
+    if (t.photos.length >= MAX_PHOTOS) return refuse(s, `A listing can have up to ${MAX_PHOTOS} photos. Delete one to add another.`);
+    attachPhoto(t, { glyph: ['drill', 'saw', 'wrench', 'washer', 'ladder', 'trimmer'][t.photos.length % 6], hue: (t.photos.length * 67 + 30) % 360 });
+    call(s, `POST /api/v1/tools/${t.id}/photos → 201 (PNG)`, `POST /Tools/Edit/${t.id}?handler=AddPhotos → 302`);
+    if (saved.created) retarget(s, t.id);
+    done(s, 'Photo added.');
+  },
+  async 'bad-photo'(s, d) {
+    // The closing tag is escaped so it cannot end this page's own script block.
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)<\/script></svg>';
+    await addPhotoFile(s, d.id ? Number(d.id) : null, new File([svg], 'photo.png', { type: 'image/png' }));
+  },
+  'make-cover'(s, d) {
+    const t = tool(Number(d.id));
+    t.photos.forEach((p) => { p.cover = p.id === Number(d.photo); });
+    call(s, `POST /api/v1/tools/${t.id}/photos/${d.photo}/cover → 204`, `POST /Tools/Edit/${t.id}?handler=MakePrimary → 302`);
+    done(s, 'Cover photo changed.');
+  },
+  'delete-photo'(s, d) {
+    const t = tool(Number(d.id));
+    const wasCover = t.photos.find((p) => p.id === Number(d.photo))?.cover;
+    t.photos = t.photos.filter((p) => p.id !== Number(d.photo));
+    if (wasCover && t.photos[0]) t.photos[0].cover = true;
+    call(s, `DELETE /api/v1/tools/${t.id}/photos/${d.photo} → 204`, `POST /Tools/Edit/${t.id}?handler=DeletePhoto → 302`);
+    done(s, 'Photo removed.');
+  },
+
+  'create-invite'() {
+    const email = val('web', 'inv-email').trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return refuse('web', 'Enter a valid email address.');
+    if (S.members.some((m) => m.email === email)) return refuse('web', 'That address already belongs to a member.');
+    // Re-inviting an address retires any invitation still outstanding for it.
+    S.invitations.filter((i) => i.email === email && i.status === 'Waiting').forEach((i) => { i.status = 'Revoked'; });
+    const token = newToken();
+    S.invitations.push({ id: S.next.invitation++, email, role: val('web', 'inv-role') || 'Member', token, status: 'Waiting' });
+    UI.web.issued = { email, link: inviteLink(token) };
+    UI.web.error = null;
+    call('web', '', 'POST /Admin/Invitations?handler=Issue → 302 (token shown once, only its hash stored)');
+    renderAll();
+  },
+  'revoke-invite'(s, d) {
+    const inv = S.invitations.find((i) => i.id === Number(d.id));
+    if (inv && inv.status === 'Waiting') inv.status = 'Revoked';
+    call('web', '', 'POST /Admin/Invitations?handler=Revoke → 302');
+    done('web', 'Invitation revoked.');
+  },
+  'copy-link'() {
+    const text = UI.web.issued?.link || '';
+    const fallback = () => {
+      const node = $('#web-issued-link');
+      if (node) { const r = document.createRange(); r.selectNodeContents(node); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
+      toast('web', 'Link selected. Copy it with your keyboard.');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => toast('web', 'Link copied.'), fallback);
+    else fallback();
+  },
+  join() {
+    const token = extractToken(val('phone', 'inv-link'));
+    const name = val('phone', 'inv-name').trim(), pw = val('phone', 'inv-pw'), pw2 = val('phone', 'inv-pw2');
+    if (!token) return refuse('phone', 'That does not look like an invitation link. Paste the whole link you were sent.');
+    if (name.length < 2) return refuse('phone', 'Enter the name other members will see.');
+    if (pw !== pw2) return refuse('phone', 'The two passwords do not match.');
+    const problem = passwordProblem(pw);
+    if (problem) return refuse('phone', problem);
+    const inv = S.invitations.find((i) => i.token === token && i.status === 'Waiting');
+    if (!inv) {
+      call('phone', 'POST /api/v1/auth/register → 400', '');
+      return refuse('phone', 'This invitation is not valid. It may already have been used, or it has expired.');
+    }
+    const m = { id: S.next.member++, name, email: inv.email, role: inv.role };
+    S.members.push(m);
+    inv.status = 'Accepted';
+    call('phone', 'POST /api/v1/auth/register → 200 (invitation spent, device token issued)', '');
+    UI.phone.memberId = m.id; UI.phone.tab = 'catalogue'; UI.phone.stack = []; UI.phone.error = null;
+    renderAll();
+    toast('phone', `Welcome, ${name.split(' ')[0]}.`);
+  }
+};
+
+/* ================================================================== wiring */
+document.addEventListener('click', (e) => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const surface = el.closest('[data-surface]');
+  const act = ACTIONS[el.dataset.action];
+  if (act) { e.preventDefault(); act(surface ? surface.dataset.surface : null, el.dataset, el); }
+});
+document.addEventListener('input', (e) => {
+  const el = e.target.closest('[data-input]');
+  const surface = el && el.closest('[data-surface]');
+  if (!surface) return;
+  UI[surface.dataset.surface].filters.q = el.value;
+  renderAll();
+});
+document.addEventListener('change', async (e) => {
+  const el = e.target.closest('[data-change]');
+  const surface = el && el.closest('[data-surface]');
+  if (!surface) return;
+  const s = surface.dataset.surface;
+  if (el.dataset.change === 'cat') { UI[s].filters.cat = el.value; renderAll(); }
+  else if (el.dataset.change === 'web-member') {
+    UI.web.memberId = Number(el.value); UI.web.issued = null; UI.web.error = null;
+    if (UI.web.route.name === 'invitations' && member(UI.web.memberId).role !== 'Admin') { /* shows the not-allowed page, as the site does */ }
+    renderAll();
+  } else if (el.dataset.change === 'photo' && el.files && el.files[0]) {
+    const file = el.files[0];
+    el.value = '';
+    await addPhotoFile(s, el.dataset.id ? Number(el.dataset.id) : null, file);
+  }
+});
+document.querySelectorAll('.tabs button').forEach((b) => b.addEventListener('click', () => {
+  $('#stage').dataset.view = b.dataset.view;
+  document.querySelectorAll('.tabs button').forEach((x) => x.setAttribute('aria-selected', String(x === b)));
+}));
+$('#reset').addEventListener('click', () => { S = seed(); UI = freshUI(); renderAll(); });
+
+renderAll();
+})();
+</script>
+</body>
+</html>
