@@ -10,9 +10,15 @@ public class Invitation
 {
     public int Id { get; set; }
 
-    /// <summary>Normalised (upper-case) email the invite was issued to.</summary>
-    [Required]
-    public string Email { get; set; } = string.Empty;
+    /// <summary>
+    /// Normalised (upper-case) email the invite was issued to, or null for an open code that whoever
+    /// holds it can use with an address of their own choosing.
+    /// </summary>
+    public string? Email { get; set; }
+
+    /// <summary>A note for the administrator's own records, such as who a code was handed to.</summary>
+    [StringLength(80)]
+    public string? Label { get; set; }
 
     /// <summary>Keyed hash (HMAC-SHA256, hex) of the six-digit access code. Unique across all invitations.</summary>
     [Required]
@@ -41,6 +47,8 @@ public class Invitation
 
     /// <summary>While set and in the future, codes are not even checked.</summary>
     public DateTimeOffset? LockedUntilUtc { get; set; }
+
+    public bool IsOpen => Email is null;
 
     public bool IsRedeemed => RedeemedUtc is not null;
 

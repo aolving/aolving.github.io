@@ -84,14 +84,23 @@ public class RegisterModel : PageModel
             return Page();
         }
 
-        var email = invitation.Email.ToLowerInvariant();
+        // An invitation tied to an address creates that address; an open code uses the one typed.
+        var email = InvitationService.AccountEmail(invitation, Input.Email);
+        if (invitation.IsOpen && await _userManager.FindByEmailAsync(email) is not null)
+        {
+            // Not redeemed, so the code is still good for a different address.
+            ModelState.AddModelError(nameof(Input.Email), "An account with that email already exists. Try signing in instead.");
+            return Page();
+        }
+
         var user = new ApplicationUser
         {
             UserName = email,
             Email = email,
             DisplayName = Input.DisplayName.Trim(),
             Location = string.IsNullOrWhiteSpace(Input.Location) ? null : Input.Location.Trim(),
-            // The invitation names this mailbox, which is the proof of ownership.
+            // An invitation tied to an address names the mailbox; an open code was handed over by an
+            // administrator who vouched for the holder. Either way the portal has no mailbox check of its own.
             EmailConfirmed = true
         };
 

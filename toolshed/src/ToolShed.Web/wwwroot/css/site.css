@@ -239,3 +239,7 @@ button.danger, .button.danger { background: var(--bad); }
 .legend { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.5rem 0 1rem; }
 
 .access-code { font-size: 2rem; letter-spacing: 0.25em; margin: 0.5rem 0; }
+
+.access-code .issued-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 1.4rem; letter-spacing: 0.15em; white-space: nowrap; }
+button.secondary { background: transparent; color: var(--accent); border-color: var(--line); }
+.row .secondary { margin-top: 0.8rem; }

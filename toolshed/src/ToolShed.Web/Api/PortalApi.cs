@@ -135,8 +135,14 @@ public static class PortalApi
             return Error(StatusCodes.Status400BadRequest, InvitationService.NotValidMessage);
         }
 
-        // The account takes the address the invitation was issued to.
-        var email = invitation.Email.ToLowerInvariant();
+        // An invitation tied to an address creates that address; an open code uses the one supplied.
+        var email = InvitationService.AccountEmail(invitation, request.Email);
+        if (invitation.IsOpen && await users.FindByEmailAsync(email) is not null)
+        {
+            // Not redeemed, so the code is still good for a different address.
+            return Error(StatusCodes.Status400BadRequest, "An account with that email already exists. Try signing in instead.");
+        }
+
         var user = new ApplicationUser
         {
             UserName = email,

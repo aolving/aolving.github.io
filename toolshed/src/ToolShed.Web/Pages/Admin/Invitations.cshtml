@@ -1,80 +1,138 @@
 @page
 @model ToolShed.Web.Pages.Admin.InvitationsModel
 @{
-    ViewData["Title"] = "Invitations";
+    ViewData["Title"] = "Access codes";
 }
-<h1>Invitations</h1>
-<p class="muted">An invitation is the only way in. Each one is single use, tied to one email address, comes with its own unique six-digit access code, and expires on its own.</p>
+<h1>Access codes</h1>
+<p class="muted">Nobody can create an account without a unique six-digit access code. Generate them here, then hand them out. Each code works once, expires on its own, and is shown to you only now: the portal keeps just a scrambled copy.</p>
 
-@if (Model.IssuedCode is not null)
+@if (Model.OpenStatus.Paused)
 {
-    <div class="notice notice-good">
-        <p>Invitation for <strong>@Model.IssuedEmail</strong>. Give them this access code, ideally not in the same message as the link:</p>
-        <p class="access-code"><strong id="issued-code">@Model.IssuedCode</strong></p>
-        <p>They join at this link, which only names their address:</p>
-        <p><code class="break">@Model.IssuedLink</code></p>
-        <p class="hint">@(Model.EmailEnabled ? "The link has been emailed to them. " : "")The code is shown once and cannot be recovered afterwards; if it is lost, create a new invitation.</p>
+    <div class="notice notice-bad">
+        <p><strong>Open codes are paused.</strong> There have been @Model.OpenStatus.RecentFailures wrong guesses at open codes in the last day (the limit is @InvitationService.OpenCodeFailureLimit), which can mean someone is guessing. Codes tied to an email address still work.</p>
+        <form method="post" asp-page-handler="Resume">
+            <button type="submit">Resume open codes</button>
+        </form>
+    </div>
+}
+else if (Model.OpenStatus.RecentFailures > 0)
+{
+    <p class="hint">@Model.OpenStatus.RecentFailures wrong guess(es) at open codes in the last day. Past @InvitationService.OpenCodeFailureLimit, open codes pause themselves.</p>
+}
+
+@if (Model.Results.Count > 0)
+{
+    <div class="notice notice-good" id="results">
+        <p><strong>@Model.Results.Count code(s) generated.</strong> Copy them now. They cannot be shown again; if one is lost, generate a new one.</p>
+        <table class="table">
+            <thead>
+            <tr><th>Access code</th><th>For</th><th>Expires</th></tr>
+            </thead>
+            <tbody>
+            @foreach (var row in Model.Results)
+            {
+                <tr>
+                    <td class="access-code"><strong class="issued-code" data-for="@(row.Email ?? "open")">@AccessCodes.Display(row.Code)</strong></td>
+                    <td>
+                        @if (row.Email is null)
+                        {
+                            <span>Open code: any email address</span>
+                        }
+                        else
+                        {
+                            <span>@row.Email</span>
+                            <br />
+                            <code class="break">@row.Link</code>
+                        }
+                    </td>
+                    <td>@row.ExpiresUtc.ToLocalTime().ToString("d MMM yyyy")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+        <p class="hint">@(Model.EmailEnabled ? "Invitation links for the addresses above have been emailed; the codes were not. " : "")Give each person their code separately from any link.</p>
     </div>
 }
 
 <partial name="_ValidationSummary" model="ModelState" />
 
 <form method="post" asp-page-handler="Issue" class="card form">
-    <h2>Invite someone</h2>
+    <h2>Generate codes</h2>
 
-    <label asp-for="Input.Email">Their email</label>
-    <input asp-for="Input.Email" type="email" maxlength="200" required />
+    <label asp-for="Input.Emails">Codes for specific people (recommended)</label>
+    <textarea asp-for="Input.Emails" rows="4" placeholder="One email address per line"></textarea>
+    <p class="hint">Each gets a code that only works with that address, so a guesser would also need to know who was invited. Strongest option.</p>
 
-    <label asp-for="Input.Role">Role</label>
+    <label asp-for="Input.OpenCount">Open codes</label>
+    <input asp-for="Input.OpenCount" type="number" min="0" max="@InvitationService.MaxBatch" required />
+    <p class="hint">
+        Codes you can hand out before knowing who will use them. The holder signs up with any email address they choose.
+        Open codes are weaker: there is no address to lock against, so wrong guesses are counted across the whole portal and
+        open codes pause themselves after @InvitationService.OpenCodeFailureLimit in a day. The portal also cannot check that the holder owns the
+        address they type, and open codes can only create ordinary members.
+    </p>
+
+    <label asp-for="Input.Role">Role for codes tied to an email</label>
     <select asp-for="Input.Role">
         <option value="@Roles.Member">Member &mdash; can list and borrow tools</option>
-        <option value="@Roles.Admin">Admin &mdash; can also invite and suspend members</option>
+        <option value="@Roles.Admin">Admin &mdash; can also generate codes and manage members</option>
     </select>
 
     <label asp-for="Input.ValidForDays">Valid for (days)</label>
     <input asp-for="Input.ValidForDays" type="number" min="1" max="30" required />
 
-    <button type="submit">Create invitation</button>
+    <label asp-for="Input.Label">Note for your own records (optional)</label>
+    <input asp-for="Input.Label" maxlength="80" placeholder="e.g. Street party handout" />
+
+    <div class="row">
+        <button type="submit">Generate codes</button>
+        <button type="submit" asp-page-handler="IssueCsv" class="secondary">Generate and download CSV</button>
+    </div>
+    <p class="hint">Up to @InvitationService.MaxBatch codes at a time.</p>
 </form>
 
 <section class="card">
-    <h2>Outstanding and recent</h2>
+    <h2>Every code issued</h2>
     @if (Model.Invitations.Count == 0)
     {
-        <p class="muted">No invitations yet.</p>
+        <p class="muted">No codes yet.</p>
     }
     else
     {
-        <table class="table">
-            <thead>
-            <tr>
-                <th>Email</th>
-                <th>Role</th>
-                <th>State</th>
-                <th>Expires</th>
-                <th></th>
-            </tr>
-            </thead>
-            <tbody>
-            @foreach (var invitation in Model.Invitations)
-            {
+        <div class="scroll-x">
+            <table class="table">
+                <thead>
                 <tr>
-                    <td>@invitation.Email.ToLowerInvariant()</td>
-                    <td>@invitation.Role</td>
-                    <td>@Model.Describe(invitation)</td>
-                    <td>@invitation.ExpiresUtc.ToLocalTime().ToString("d MMM yyyy")</td>
-                    <td>
-                        @if (invitation.IsUsableAt(Model.Now))
-                        {
-                            <form method="post" asp-page-handler="Revoke" class="inline-form">
-                                <input type="hidden" name="invitationId" value="@invitation.Id" />
-                                <button class="link-button danger" type="submit">Revoke</button>
-                            </form>
-                        }
-                    </td>
+                    <th>For</th>
+                    <th>Note</th>
+                    <th>Role</th>
+                    <th>State</th>
+                    <th>Expires</th>
+                    <th></th>
                 </tr>
-            }
-            </tbody>
-        </table>
+                </thead>
+                <tbody>
+                @foreach (var invitation in Model.Invitations)
+                {
+                    <tr>
+                        <td>@(invitation.Email is null ? "Open code" : invitation.Email.ToLowerInvariant())</td>
+                        <td>@invitation.Label</td>
+                        <td>@invitation.Role</td>
+                        <td>@Model.Describe(invitation)</td>
+                        <td>@invitation.ExpiresUtc.ToLocalTime().ToString("d MMM yyyy")</td>
+                        <td>
+                            @if (invitation.IsUsableAt(Model.Now))
+                            {
+                                <form method="post" asp-page-handler="Revoke" class="inline-form">
+                                    <input type="hidden" name="invitationId" value="@invitation.Id" />
+                                    <button class="link-button danger" type="submit">Revoke</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
     }
 </section>

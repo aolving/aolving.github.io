@@ -184,6 +184,55 @@ public class ApiTests
         Assert.Equal(wrongCode.Message, malformed.Message);
     }
 
+    /// <summary>An open code, generated the way the admin's generator does, with nobody in mind.</summary>
+    private async Task<string> OpenCodeAsync()
+    {
+        using var scope = _factory.Services.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var admin = (await users.FindByEmailAsync(PortalFactory.AdminEmail))!;
+        var invitations = scope.ServiceProvider.GetRequiredService<InvitationService>();
+        return (await invitations.IssueAsync(null, Roles.Member, 7, admin.Id, "api test")).Code;
+    }
+
+    [Fact]
+    public async Task An_open_code_creates_an_account_with_the_email_the_app_supplies()
+    {
+        var code = await OpenCodeAsync();
+        var chosen = $"open-{Guid.NewGuid():N}@example.test";
+
+        var auth = await NewClient().RegisterAsync(chosen.ToUpperInvariant(), code, "Open Joiner", PortalFactory.MemberPassword, null, "tests");
+
+        Assert.Equal(chosen, auth.User.Email, ignoreCase: true);
+        Assert.False(auth.User.IsAdmin);
+        await NewClient().LoginAsync(chosen, PortalFactory.MemberPassword, "second phone");
+    }
+
+    [Fact]
+    public async Task An_open_code_works_once()
+    {
+        var code = await OpenCodeAsync();
+        await NewClient().RegisterAsync($"first-{Guid.NewGuid():N}@example.test", code, "First", PortalFactory.MemberPassword, null, "tests");
+
+        var again = await ExpectFailureAsync(() => NewClient().RegisterAsync(
+            $"second-{Guid.NewGuid():N}@example.test", code, "Second", PortalFactory.MemberPassword, null, "tests"));
+        Assert.Equal(HttpStatusCode.BadRequest, again.StatusCode);
+        Assert.Contains("do not match a valid invitation", again.Message);
+    }
+
+    [Fact]
+    public async Task An_open_code_is_kept_when_the_address_already_has_an_account()
+    {
+        var (_, existing) = await NewMemberAsync("taken");
+        var code = await OpenCodeAsync();
+
+        var duplicate = await ExpectFailureAsync(() => NewClient().RegisterAsync(existing, code, "Dup", PortalFactory.MemberPassword, null, "tests"));
+        Assert.Equal(HttpStatusCode.BadRequest, duplicate.StatusCode);
+        Assert.Contains("already exists", duplicate.Message);
+
+        // Not spent: still good for a different address.
+        await NewClient().RegisterAsync($"fresh-{Guid.NewGuid():N}@example.test", code, "Fresh", PortalFactory.MemberPassword, null, "tests");
+    }
+
     [Fact]
     public async Task The_access_code_may_be_typed_with_a_space_or_a_dash()
     {

@@ -34,30 +34,48 @@ public class PortalTests
 
     private static string UniqueEmail(string label) => $"{label}-{Guid.NewGuid():N}@example.test";
 
-    private static readonly Regex IssuedCode = new("id=\"issued-code\">([0-9 ]+)<", RegexOptions.Compiled);
+    private static readonly Regex IssuedCodeRow = new("data-for=\"([^\"]+)\">([0-9 ]+)<", RegexOptions.Compiled);
 
     /// <summary>
-    /// Issues an invitation as the admin, as a person would from the Invitations page, and returns the
-    /// sign-up link (path and query) together with the six-digit access code shown beside it.
+    /// Drives the code generator as an admin would and returns what it shows: each code with who it is
+    /// for ("open" for an open code). The codes appear only in this one response.
     /// </summary>
+    private static async Task<(string Html, List<(string For, string Code)> Codes)> GenerateAsync(
+        HttpClient admin, string emails, int openCount, string role = "Member", string handler = "Issue", string? label = null)
+    {
+        var response = await admin.PostFormAsync("/Admin/Invitations", $"/Admin/Invitations?handler={handler}",
+        [
+            new("Input.Emails", emails),
+            new("Input.OpenCount", openCount.ToString()),
+            new("Input.Role", role),
+            new("Input.ValidForDays", "7"),
+            new("Input.Label", label ?? string.Empty)
+        ]);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var html = await response.Content.ReadAsStringAsync();
+        var codes = IssuedCodeRow.Matches(html)
+            .Select(m => (m.Groups[1].Value, m.Groups[2].Value.Replace(" ", string.Empty)))
+            .ToList();
+        return (html, codes);
+    }
+
+    /// <summary>One code for one address, as the old "invite someone" form did. Returns the link and the code.</summary>
     private static async Task<(string Link, string Code)> InviteAsync(HttpClient admin, string email, string role = "Member")
     {
-        var response = await admin.PostFormAsync("/Admin/Invitations", "/Admin/Invitations?handler=Issue",
-        [
-            new("Input.Email", email),
-            new("Input.Role", role),
-            new("Input.ValidForDays", "7")
-        ]);
-        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
-
-        // The code and link are shown once, on the very next page view.
-        var html = await admin.GetHtmlAsync("/Admin/Invitations");
-        var code = IssuedCode.Match(html);
-        Assert.True(code.Success, "The access code was not shown to the admin.");
+        var (html, codes) = await GenerateAsync(admin, email, 0, role);
+        var code = codes.SingleOrDefault(c => c.For == email.ToLowerInvariant());
+        Assert.False(string.IsNullOrEmpty(code.Code), "The access code was not shown to the admin.");
         var link = CodeBlock.Match(html);
         Assert.True(link.Success, "The invitation link was not shown to the admin.");
 
-        return (new Uri(WebUtility.HtmlDecode(link.Groups[1].Value.Trim())).PathAndQuery, code.Groups[1].Value.Replace(" ", string.Empty));
+        return (new Uri(WebUtility.HtmlDecode(link.Groups[1].Value.Trim())).PathAndQuery, code.Code);
+    }
+
+    private static async Task<List<string>> OpenCodesAsync(HttpClient admin, int count)
+    {
+        var (_, codes) = await GenerateAsync(admin, string.Empty, count);
+        return codes.Where(c => c.For == "open").Select(c => c.Code).ToList();
     }
 
     private static Task<HttpResponseMessage> TryRegisterAsync(
@@ -190,7 +208,7 @@ public class PortalTests
         Assert.DoesNotContain("code=", link);
         var codeInput = Regex.Match(html, "<input[^>]*name=\"Input.AccessCode\"[^>]*>").Value;
         Assert.NotEmpty(codeInput);
-        Assert.DoesNotContain("value=", codeInput);
+        Assert.DoesNotMatch("value=\"[^\"]+\"", codeInput);   // empty (value=\"\") is fine; anything filled in is not
     }
 
     [Fact]
@@ -424,13 +442,14 @@ public class PortalTests
 
         var response = await admin.PostFormAsync("/Admin/Invitations", "/Admin/Invitations?handler=Issue",
         [
-            new("Input.Email", email),
+            new("Input.Emails", email),
+            new("Input.OpenCount", "0"),
             new("Input.Role", "Member"),
             new("Input.ValidForDays", "7")
         ]);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("already belongs to a member", await response.Content.ReadAsStringAsync());
+        Assert.Contains("already belong to members", await response.Content.ReadAsStringAsync());
     }
 
     [Fact]
@@ -467,6 +486,258 @@ public class PortalTests
         Assert.Null(await FindUserAsync(email));
 
         await RegisterAsync(_factory.NewClient(), email, second);
+    }
+
+    // ---------- the code generator and open codes ----------
+
+    private async Task ResumeOpenCodesAsync(HttpClient admin)
+    {
+        var response = await admin.PostFormAsync("/Admin/Invitations", "/Admin/Invitations?handler=Resume", []);
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task The_generator_makes_a_mixed_batch_of_unique_codes_in_one_go()
+    {
+        var admin = await AdminAsync();
+        var a = UniqueEmail("batch-a");
+        var b = UniqueEmail("batch-b");
+
+        var (html, codes) = await GenerateAsync(admin, $"{a}\n{b}", 3, label: "Street party");
+
+        Assert.Equal(5, codes.Count);
+        Assert.Equal(5, codes.Select(c => c.Code).Distinct().Count());
+        Assert.All(codes, c => Assert.Matches("^[0-9]{6}$", c.Code));
+        Assert.Contains(codes, c => c.For == a.ToLowerInvariant());
+        Assert.Contains(codes, c => c.For == b.ToLowerInvariant());
+        Assert.Equal(3, codes.Count(c => c.For == "open"));
+        Assert.Contains("5 code(s) generated", html);
+    }
+
+    [Fact]
+    public async Task The_generator_response_is_never_cached()
+    {
+        var admin = await AdminAsync();
+        var response = await admin.PostFormAsync("/Admin/Invitations", "/Admin/Invitations?handler=Issue",
+        [
+            new("Input.Emails", string.Empty), new("Input.OpenCount", "1"), new("Input.Role", "Member"), new("Input.ValidForDays", "7")
+        ]);
+
+        Assert.Contains("no-store", response.Headers.CacheControl?.ToString() ?? string.Empty);
+    }
+
+    [Fact]
+    public async Task Someone_joins_with_an_open_code_and_an_email_they_choose()
+    {
+        var admin = await AdminAsync();
+        var code = (await OpenCodesAsync(admin, 1)).Single();
+        var chosen = UniqueEmail("chosen");
+
+        var client = _factory.NewClient();
+        await RegisterAsync(client, chosen, code, "Open Joiner");
+
+        await client.GetHtmlAsync("/");
+        Assert.NotNull(await FindUserAsync(chosen));
+        Assert.True(await IsInRoleAsync(chosen, "Member"));
+        Assert.False(await IsInRoleAsync(chosen, "Admin"));
+
+        // Spent: nobody else can use it, with this address or another.
+        var again = await TryRegisterAsync(_factory.NewClient(), UniqueEmail("latecomer"), code, "Latecomer");
+        Assert.Equal(HttpStatusCode.OK, again.StatusCode);
+        Assert.Contains("do not match a valid invitation", await again.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task An_open_code_can_never_create_an_admin_even_if_the_form_asks_for_one()
+    {
+        var admin = await AdminAsync();
+        var (_, codes) = await GenerateAsync(admin, string.Empty, 1, role: "Admin");
+        var chosen = UniqueEmail("sneaky-admin");
+
+        await RegisterAsync(_factory.NewClient(), chosen, codes.Single(c => c.For == "open").Code, "Not An Admin");
+
+        Assert.True(await IsInRoleAsync(chosen, "Member"));
+        Assert.False(await IsInRoleAsync(chosen, "Admin"));
+    }
+
+    [Fact]
+    public async Task An_address_with_its_own_code_cannot_use_an_open_code()
+    {
+        var admin = await AdminAsync();
+        var invited = UniqueEmail("invited");
+        var (_, tiedCode) = await InviteAsync(admin, invited);
+        var open = (await OpenCodesAsync(admin, 1)).Single();
+
+        var response = await TryRegisterAsync(_factory.NewClient(), invited, open, "Mixer");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("do not match a valid invitation", await response.Content.ReadAsStringAsync());
+        Assert.Null(await FindUserAsync(invited));
+        // Its own code still works.
+        await RegisterAsync(_factory.NewClient(), invited, tiedCode, "Invited");
+    }
+
+    [Fact]
+    public async Task An_open_code_is_not_used_up_by_an_address_that_already_has_an_account()
+    {
+        var admin = await AdminAsync();
+        var (_, existing) = await NewMemberAsync(admin, "already");
+        var code = (await OpenCodesAsync(admin, 1)).Single();
+
+        var response = await TryRegisterAsync(_factory.NewClient(), existing, code, "Duplicate");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("already exists", await response.Content.ReadAsStringAsync());
+
+        // The code is still good for a different address.
+        await RegisterAsync(_factory.NewClient(), UniqueEmail("fresh"), code, "Fresh");
+    }
+
+    [Fact]
+    public async Task Guessing_open_codes_trips_the_breaker_until_an_admin_resumes_them()
+    {
+        var admin = await AdminAsync();
+        await ResumeOpenCodesAsync(admin);              // start from a clean slate
+        var code = (await OpenCodesAsync(admin, 1)).Single();
+        var wrong = code == "000000" ? "000001" : "000000";
+
+        try
+        {
+            for (var i = 0; i < 30; i++)
+            {
+                await TryRegisterAsync(_factory.NewClient(), UniqueEmail("guess"), wrong, "Guesser");
+            }
+
+            // Paused: the real code is turned away too, and the admin is told.
+            var joiner = UniqueEmail("honest");
+            var blocked = await TryRegisterAsync(_factory.NewClient(), joiner, code, "Honest");
+            Assert.Equal(HttpStatusCode.OK, blocked.StatusCode);
+            Assert.Null(await FindUserAsync(joiner));
+            Assert.Contains("Open codes are paused", await admin.GetHtmlAsync("/Admin/Invitations"));
+        }
+        finally
+        {
+            await ResumeOpenCodesAsync(admin);
+        }
+
+        // Resumed: the same code works for the person it was meant for.
+        await RegisterAsync(_factory.NewClient(), UniqueEmail("honest-again"), code, "Honest");
+        Assert.DoesNotContain("Open codes are paused", await admin.GetHtmlAsync("/Admin/Invitations"));
+    }
+
+    [Fact]
+    public async Task The_pause_does_not_stop_codes_tied_to_an_email()
+    {
+        var admin = await AdminAsync();
+        await ResumeOpenCodesAsync(admin);
+        var invited = UniqueEmail("tied-during-pause");
+        var (_, code) = await InviteAsync(admin, invited);
+
+        try
+        {
+            for (var i = 0; i < 30; i++)
+            {
+                await TryRegisterAsync(_factory.NewClient(), UniqueEmail("guess"), "123456", "Guesser");
+            }
+
+            await RegisterAsync(_factory.NewClient(), invited, code, "Invited");
+        }
+        finally
+        {
+            await ResumeOpenCodesAsync(admin);
+        }
+    }
+
+    [Fact]
+    public async Task The_csv_download_has_the_codes_and_defuses_spreadsheet_formulas()
+    {
+        var admin = await AdminAsync();
+        var email = UniqueEmail("csv");
+
+        var token = await admin.AntiforgeryTokenAsync("/Admin/Invitations");
+        var response = await admin.PostAsync("/Admin/Invitations?handler=IssueCsv", new FormUrlEncodedContent(
+        [
+            new KeyValuePair<string, string>("Input.Emails", email),
+            new KeyValuePair<string, string>("Input.OpenCount", "2"),
+            new KeyValuePair<string, string>("Input.Role", "Member"),
+            new KeyValuePair<string, string>("Input.ValidForDays", "7"),
+            new KeyValuePair<string, string>("Input.Label", "=HYPERLINK(\"http://evil.test\",\"click\")"),
+            new KeyValuePair<string, string>("__RequestVerificationToken", token)
+        ]));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/csv", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("no-store", response.Headers.CacheControl?.ToString() ?? string.Empty);
+
+        var csv = System.Text.Encoding.UTF8.GetString(await response.Content.ReadAsByteArrayAsync()).TrimStart('\uFEFF');
+        var lines = csv.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        Assert.StartsWith("Access code,For,Role,Expires,Label,Link", lines[0]);
+        Assert.Equal(4, lines.Length);                       // header + 1 emailed + 2 open
+        Assert.Matches("^[0-9]{3} [0-9]{3},", lines[1]);     // grouped, so Excel keeps leading zeros
+        Assert.Contains(email.ToLowerInvariant(), csv);
+        Assert.Contains("Open code (any email)", csv);
+        // The label began with '=', which a spreadsheet would run as a formula.
+        Assert.DoesNotContain(",=HYPERLINK", csv);
+        Assert.DoesNotContain("\"=HYPERLINK", csv);
+        Assert.Contains("'=HYPERLINK", csv);
+    }
+
+    [Fact]
+    public async Task The_generator_refuses_bad_input_with_a_reason_and_issues_nothing()
+    {
+        var admin = await AdminAsync();
+
+        async Task<string> Refused(string emails, int open)
+        {
+            var response = await admin.PostFormAsync("/Admin/Invitations", "/Admin/Invitations?handler=Issue",
+            [
+                new("Input.Emails", emails), new("Input.OpenCount", open.ToString()), new("Input.Role", "Member"), new("Input.ValidForDays", "7")
+            ]);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var html = await response.Content.ReadAsStringAsync();
+            Assert.DoesNotContain("code(s) generated", html);
+            return html;
+        }
+
+        Assert.Contains("Enter at least one email address", await Refused(string.Empty, 0));
+        Assert.Contains("do not look like email addresses", await Refused("not an address", 0));
+        Assert.Contains("up to 50", await Refused(string.Empty, 51));
+
+        var tooMany = string.Join("\n", Enumerable.Range(0, 40).Select(i => $"bulk{i}-{Guid.NewGuid():N}@example.test"));
+        Assert.Contains("up to 50", await Refused(tooMany, 20));
+    }
+
+    [Fact]
+    public async Task Only_admins_can_use_the_generator()
+    {
+        var admin = await AdminAsync();
+        var (member, _) = await NewMemberAsync(admin, "nosy");
+
+        var response = await member.PostFormAsync("/Account/Manage", "/Admin/Invitations?handler=Issue",
+        [
+            new("Input.Emails", string.Empty), new("Input.OpenCount", "5"), new("Input.Role", "Member"), new("Input.ValidForDays", "7")
+        ]);
+
+        Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
+        Assert.Contains("AccessDenied", RedirectTarget(response));
+    }
+
+    [Fact]
+    public async Task The_list_shows_open_codes_with_their_notes_and_lets_an_admin_revoke_them()
+    {
+        var admin = await AdminAsync();
+        var note = $"note-{Guid.NewGuid():N}";
+        var code = (await GenerateAsync(admin, string.Empty, 1, label: note)).Codes.Single().Code;
+
+        var list = await admin.GetHtmlAsync("/Admin/Invitations");
+        Assert.Contains(note, list);
+        Assert.Contains("Open code", list);
+
+        var id = Regex.Match(list, "name=\"invitationId\" value=\"(\\d+)\"").Groups[1].Value;
+        await admin.PostFormAsync("/Admin/Invitations", "/Admin/Invitations?handler=Revoke", [new("invitationId", id)]);
+
+        var response = await TryRegisterAsync(_factory.NewClient(), UniqueEmail("late"), code, "Late");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("do not match a valid invitation", await response.Content.ReadAsStringAsync());
     }
 
     // ---------- tools, photos and loans ----------

@@ -21,6 +21,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
 
     public DbSet<ApiToken> ApiTokens => Set<ApiToken>();
 
+    public DbSet<OpenCodeFailure> OpenCodeFailures => Set<OpenCodeFailure>();
+
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
     {
         base.ConfigureConventions(configurationBuilder);
@@ -86,6 +88,8 @@ public class ApplicationDbContext : IdentityDbContext<ApplicationUser>
             entity.HasIndex(t => t.TokenHash).IsUnique();
             entity.HasIndex(t => t.UserId);
         });
+
+        builder.Entity<OpenCodeFailure>(entity => entity.HasIndex(f => f.AtUtc));
 
         builder.Entity<Invitation>(entity =>
         {
