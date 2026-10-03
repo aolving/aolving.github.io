@@ -79,13 +79,13 @@ public partial class EditToolPage : PageBase
     {
         if (string.IsNullOrWhiteSpace(NameEntry.Text) || NameEntry.Text.Trim().Length < 2)
         {
-            _ = DisplayAlert("Name", "Give the tool a name.", "OK");
+            _ = DisplayAlertAsync("Name", "Give the tool a name.", "OK");
             return null;
         }
 
         if (string.IsNullOrWhiteSpace(CategoryEntry.Text) || CategoryEntry.Text.Trim().Length < 2)
         {
-            _ = DisplayAlert("Category", "Enter a category so people can find it.", "OK");
+            _ = DisplayAlertAsync("Category", "Enter a category so people can find it.", "OK");
             return null;
         }
 
@@ -140,7 +140,7 @@ public partial class EditToolPage : PageBase
     {
         if (!MediaPicker.Default.IsCaptureSupported)
         {
-            await DisplayAlert("Camera", "This device cannot take photos from here. Choose a photo instead.", "OK");
+            await DisplayAlertAsync("Camera", "This device cannot take photos from here. Choose a photo instead.", "OK");
             return;
         }
 
@@ -151,7 +151,7 @@ public partial class EditToolPage : PageBase
         }
         catch (PermissionException)
         {
-            await DisplayAlert("Camera", "Allow camera access in Settings to take photos of your tools.", "OK");
+            await DisplayAlertAsync("Camera", "Allow camera access in Settings to take photos of your tools.", "OK");
             return;
         }
 
@@ -166,11 +166,12 @@ public partial class EditToolPage : PageBase
         FileResult? photo;
         try
         {
-            photo = await MediaPicker.Default.PickPhotoAsync();
+            var picked = await MediaPicker.Default.PickPhotosAsync();
+            photo = picked?.FirstOrDefault();
         }
         catch (PermissionException)
         {
-            await DisplayAlert("Photos", "Allow photo access in Settings to choose photos of your tools.", "OK");
+            await DisplayAlertAsync("Photos", "Allow photo access in Settings to choose photos of your tools.", "OK");
             return;
         }
 
@@ -184,7 +185,7 @@ public partial class EditToolPage : PageBase
     {
         if (_items.Count >= MaxPhotos)
         {
-            await DisplayAlert("Photos", $"A listing can have up to {MaxPhotos} photos. Delete one to add another.", "OK");
+            await DisplayAlertAsync("Photos", $"A listing can have up to {MaxPhotos} photos. Delete one to add another.", "OK");
             return;
         }
 
@@ -227,7 +228,7 @@ public partial class EditToolPage : PageBase
             return;
         }
 
-        if (!await DisplayAlert("Delete photo", "Remove this photo from the listing?", "Delete", "Keep"))
+        if (!await DisplayAlertAsync("Delete photo", "Remove this photo from the listing?", "Delete", "Keep"))
         {
             return;
         }
@@ -249,7 +250,7 @@ public partial class EditToolPage : PageBase
             return;
         }
 
-        if (!await DisplayAlert("Delete listing", "This also deletes its photos and its loan history. Continue?", "Delete", "Keep"))
+        if (!await DisplayAlertAsync("Delete listing", "This also deletes its photos and its loan history. Continue?", "Delete", "Keep"))
         {
             return;
         }

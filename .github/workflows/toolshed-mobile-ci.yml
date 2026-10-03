@@ -84,6 +84,6 @@ jobs:
           # Restrict the build to iOS: on a Mac the project would otherwise also restore the
           # Android target, whose workload this job does not install.
           dotnet build toolshed/src/ToolShed.Mobile -f net10.0-ios -c Debug \
-            -p:TargetFrameworks=net10.0-ios \
+            -p:MobileTargets=net10.0-ios \
             -p:RuntimeIdentifier=iossimulator-arm64 \
             -p:ValidateXcodeVersion=false

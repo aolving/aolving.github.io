@@ -31,13 +31,13 @@ public partial class WelcomePage : PageBase
     {
         if (!ServerAddress.TryNormalise(ServerEntry.Text, out var server, out var problem))
         {
-            await DisplayAlert("Portal address", problem, "OK");
+            await DisplayAlertAsync("Portal address", problem, "OK");
             return;
         }
 
         if (string.IsNullOrWhiteSpace(EmailEntry.Text) || string.IsNullOrEmpty(PasswordEntry.Text))
         {
-            await DisplayAlert("Sign in", "Enter your email and password.", "OK");
+            await DisplayAlertAsync("Sign in", "Enter your email and password.", "OK");
             return;
         }
 

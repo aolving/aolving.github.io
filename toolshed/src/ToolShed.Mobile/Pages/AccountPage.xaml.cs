@@ -34,7 +34,7 @@ public partial class AccountPage : PageBase
 
     private async void OnSignOut(object? sender, EventArgs e)
     {
-        if (!await DisplayAlert("Sign out", "Sign out of The Tool Shed on this device?", "Sign out", "Stay"))
+        if (!await DisplayAlertAsync("Sign out", "Sign out of The Tool Shed on this device?", "Sign out", "Stay"))
         {
             return;
         }

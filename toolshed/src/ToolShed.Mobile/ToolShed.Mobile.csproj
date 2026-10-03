@@ -5,8 +5,11 @@
        build does not. It has its own workflow, .github/workflows/toolshed-mobile-ci.yml. The shared
        libraries it references target net8.0, which a net10.0 app can use. -->
   <PropertyGroup>
-    <TargetFrameworks>net10.0-android</TargetFrameworks>
-    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('osx'))">$(TargetFrameworks);net10.0-ios</TargetFrameworks>
+    <!-- MobileTargets picks the platforms. It is a private property rather than TargetFrameworks so that
+         passing it on the command line does not leak into the libraries this project references. -->
+    <MobileTargets Condition="'$(MobileTargets)' == '' and $([MSBuild]::IsOSPlatform('osx'))">net10.0-android;net10.0-ios</MobileTargets>
+    <MobileTargets Condition="'$(MobileTargets)' == ''">net10.0-android</MobileTargets>
+    <TargetFrameworks>$(MobileTargets)</TargetFrameworks>
 
     <OutputType>Exe</OutputType>
     <RootNamespace>ToolShed.Mobile</RootNamespace>

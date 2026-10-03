@@ -136,12 +136,12 @@ public partial class ToolDetailPage : PageBase
             {
                 await Session.Client.RequestBookingAsync(
                     _toolId,
-                    DateOnly.FromDateTime(StartPicker.Date),
-                    DateOnly.FromDateTime(EndPicker.Date),
+                    DateOnly.FromDateTime(StartPicker.Date ?? DateTime.Today),
+                    DateOnly.FromDateTime(EndPicker.Date ?? DateTime.Today),
                     string.IsNullOrWhiteSpace(NoteEditor.Text) ? null : NoteEditor.Text.Trim());
 
                 NoteEditor.Text = string.Empty;
-                await DisplayAlert("Request sent", "The owner will see it under Loans.", "OK");
+                await DisplayAlertAsync("Request sent", "The owner will see it under Loans.", "OK");
                 await LoadAsync();
             });
         }

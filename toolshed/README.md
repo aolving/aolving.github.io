@@ -156,7 +156,7 @@ app can reference.
 ```bash
 dotnet workload install maui-android            # and maui-ios, on a Mac
 dotnet build src/ToolShed.Mobile -f net10.0-android
-dotnet build src/ToolShed.Mobile -f net10.0-ios -p:TargetFrameworks=net10.0-ios  # Mac with Xcode only
+dotnet build src/ToolShed.Mobile -f net10.0-ios -p:MobileTargets=net10.0-ios  # Mac with Xcode only
 ```
 
 Or open `src/ToolShed.Mobile` in Visual Studio / Rider / VS Code with the MAUI tooling, pick a device or

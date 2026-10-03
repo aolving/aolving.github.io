@@ -128,7 +128,7 @@ public partial class LoansPage : PageBase
             return;
         }
 
-        if (!await DisplayAlert("Cancel", "Call this loan off? The dates become free again.", "Cancel loan", "Keep"))
+        if (!await DisplayAlertAsync("Cancel", "Call this loan off? The dates become free again.", "Cancel loan", "Keep"))
         {
             return;
         }

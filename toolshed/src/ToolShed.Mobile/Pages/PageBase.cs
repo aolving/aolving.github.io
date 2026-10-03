@@ -26,11 +26,11 @@ public abstract class PageBase : ContentPage
         }
         catch (PortalApiException ex)
         {
-            await DisplayAlert("The Tool Shed", ex.Message, "OK");
+            await DisplayAlertAsync("The Tool Shed", ex.Message, "OK");
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            await DisplayAlert("No connection", "Could not reach the portal. Check your connection and try again.", "OK");
+            await DisplayAlertAsync("No connection", "Could not reach the portal. Check your connection and try again.", "OK");
         }
     }
 }
