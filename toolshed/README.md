@@ -179,27 +179,42 @@ release signing could be exercised in this repository's CI.
 
 `demo/index.html` (in the repository root) is an interactive demo: the website and the phone app side by side,
 sharing one set of sample data, so you can request a loan on the phone and approve it on the website, and
-invite someone with an access code. It runs
+generate access codes and join with them. It runs
 entirely in the browser, applies the same booking rules as the server (inclusive dates, no double-booking, loan
-limits, auto-declining competing requests, overdue flags) and the same photo and access-code checks (unique codes, the lock after five wrong ones), and shows
+limits, auto-declining competing requests, overdue flags) and the same photo and access-code checks (unique codes, tied and open codes, the lock after five wrong ones, the open-code breaker), and shows
 the API calls and emails each action would cause. It is a simulation for trying the flows: it does not talk to a
 portal, and nothing you do in it is saved. Open the file in a browser, or visit `/demo/` once the site is published.
 
 ## How joining works
 
-Creating an account takes four things, all checked together: **the email address the member was invited with,
-a password they choose, their name, and a unique six-digit access code.** There is no other way in, and no open
-registration page.
+Creating an account takes four things, all checked together: **an email address, a password the member chooses,
+their name, and a unique six-digit access code.** There is no other way in, and no open registration page.
 
-1. An admin opens **Invitations**, enters an email address, picks a role and a lifetime (1–30 days).
-2. The portal issues a **six-digit access code that no other invitation has ever had**, and shows it to the admin
-   **once**, beside the registration link. The link only names the address (`/Account/Register?email=…`); the code
-   is never in a link, so the two can travel by different routes. If email is configured, only the link is
-   mailed; the code is given separately (in person, by phone), so a copy of the email alone is not enough to join.
-3. The invitee opens the page, confirms their email, enters the access code, and chooses their name and password.
-   The email must be the invited one, and the code must be the one issued for it.
-4. The invitation is spent. Re-inviting an address retires any invitation still outstanding for it, and an admin
-   can revoke one at any time.
+### The code generator
+
+An admin opens **Invitations** (the code generator) and, in one go, makes up to fifty codes:
+
+- **Codes for specific people (recommended).** Paste email addresses, one per line. Each address gets its own
+  code, and that code only works with that address, so a guesser would need to know who was invited as well.
+- **Open codes.** Ask for any number of codes with nobody in mind. The holder signs up with an address of their
+  own choosing. Convenient for handing out in person, but weaker (see below).
+
+Every code is unique across all invitations ever issued. Choose the role for the tied codes (open codes can only
+ever create ordinary members, whatever the form says), how long they last (1–30 days), and optionally a note for
+your own records such as who a batch went to. The codes are shown on screen **once**, never cached, and the same
+batch can be downloaded as a **CSV** (digits grouped so Excel keeps leading zeros, spreadsheet formulas in typed
+text neutralised, and a byte-order mark so accents survive). The portal keeps only a scrambled copy, so a lost code
+cannot be looked up: generate another and revoke the old one from the list.
+
+If email is configured, the link for each tied address is mailed (`/Account/Register?email=…`). The code is never
+in a link or an email, so a copy of the email alone is not enough to join; hand the code over separately.
+
+### Joining
+
+The invitee opens the registration page, enters their email, the access code, their name and a password they
+choose. A tied code needs the invited address; an open code works with whatever address is typed (if that address
+already has an account they are told so, and the code is not used up). The code is then spent. Re-generating for an
+address retires the earlier code, and an admin can revoke any code at any time.
 
 The website, the JSON API and the mobile app all use the same service and the same rules.
 
@@ -209,16 +224,22 @@ A six-digit code is one in a million, so it is never a bare check:
 
 | Defence | Effect |
 | --- | --- |
-| Checked **together with the email** | Only that address's invitation is tried, so an attacker needs a valid invited address *and* the code. |
+| Checked **together with the email** (tied codes) | Only that address's invitation is tried, so an attacker needs a valid invited address *and* the code. |
 | **Pause after five wrong codes** | The invitation stops checking codes for 15 minutes, even for the right one, so guessing is slowed to a crawl. |
 | **Cancelled after thirty wrong codes** | The invitation is revoked and must be reissued. In total an attacker gets 30 guesses in a million, about 0.003%. |
 | **Keyed hash at rest** | Codes are stored as HMAC-SHA256 under a secret in `access-code.key`, kept beside the signing keys and apart from the database. A plain hash of a six-digit number can be reversed instantly by anyone with a copy of the database; this cannot. |
 | **Unique across all invitations** | A unique index, with retries on collision, so each code identifies exactly one invitation, ever. (That caps the portal at a million invitations in its lifetime.) |
+| **Open codes: a circuit breaker** | There is no address to lock, so wrong guesses at open codes are counted across the whole portal. Thirty in a day pauses open codes (even right ones) until the oldest guesses age out or an admin presses **Resume**; the Invitations page says when this has happened. That caps guessing at thirty tries a day, however many machines an attacker uses. Tied codes are unaffected. |
+| **Open and tied codes never help each other** | An address with an invitation of its own can only use that invitation's code, so open codes cannot be probed through someone else's invited address. |
 | **One answer for every failure** | Wrong code, wrong email, no invitation, spent, expired, locked, malformed: the same message, so the form cannot reveal who has been invited. |
 | **IP rate limit** | The website and API sign-up/sign-in endpoints share the per-IP limit (`RateLimits:AuthPermits`). |
 | **Weak passwords do not burn the code** | A password that fails the policy is refused before the invitation is spent, so the member can try again. |
 
-If a code is lost, create a new invitation: the old one is retired. Keep `access-code.key` with your backups
+**Know the limits of open codes.** They are the convenient option, not the strongest: while one is outstanding, anyone who finds it
+can join, and the portal cannot check that the holder owns the email address they type (so a typo sends password-reset links to a
+stranger). Prefer codes tied to an address when you know who is joining, keep open-code batches small and short-lived, and revoke what you do not use.
+
+If a code is lost, generate a new one: reissuing for an address retires the old code. Keep `access-code.key` with your backups
 (it is in the same volume as the signing keys); if it is lost, outstanding invitations stop working and need reissuing.
 
 ## Looking after members
@@ -255,7 +276,7 @@ dates; the rest release them.
 
 | Concern | How it is handled |
 | --- | --- |
-| Who can get in | Invitation only: the invited email, a password they choose and a unique six-digit access code, all checked together. Single use, expiring, rate-limited, locked after repeated wrong codes, code stored as a keyed hash. |
+| Who can get in | Nobody without a unique six-digit access code, plus an email and a password they choose. Codes are single use and expiring, rate-limited, locked or paused after repeated wrong guesses, and stored as a keyed hash. |
 | Default access | The authorization *fallback* policy requires a signed-in user, so a new page is private unless it opts out. |
 | Admin pages | `/Admin` is gated by a `RequireAdmin` role policy. |
 | Passwords | 12+ characters, mixed case, digit and symbol; hashed by Identity (PBKDF2). |

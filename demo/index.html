@@ -211,7 +211,7 @@ code { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
       <li><b>On the website</b> you are Olive, the drill's owner. Open Loans, then approve Ben's request with a note.</li>
       <li><b>Back on the phone</b>, Loans shows Approved with Olive's note, and the drill's calendar is red on both screens.</li>
       <li><b>On the website</b>, switch to Priya and ask for the same dates. They are already spoken for.</li>
-      <li><b>Invite someone.</b> On the website as Olive, open Invitations and create one. It comes with a six-digit access code. On the phone, sign out, choose "I have an invitation", and enter the email, the code and a password. A wrong code is refused, and five in a row lock the invitation.</li>
+      <li><b>Generate access codes.</b> On the website as Olive, open Invitations and generate a few: some tied to an email, some open. On the phone, sign out, choose "I have an invitation", and join with an email, one of the codes and a password. Open codes work with any email; tied codes only with theirs. Wrong codes are refused, and thirty wrong guesses at open codes pause them.</li>
       <li><b>Photos.</b> On My tools, list a tool and press "Try an SVG disguised as a photo". It is refused, because the file's contents decide, not its name.</li>
     </ol>
   </section>
@@ -302,6 +302,7 @@ function seed() {
       { id: 3, toolId: 1, borrowerId: 3, start: addDays(t0, 9), end: addDays(t0, 11), status: 'Requested', borrowerNote: 'Hanging shelves.', ownerNote: null }
     ],
     invitations: [],
+    openFailures: [],
     log: [],
     next: { tool: 7, booking: 4, member: 5, photo: 1000, invitation: 1 }
   };
@@ -457,19 +458,30 @@ function normaliseCode(input) {
 }
 const showCode = (code) => `${code.slice(0, 3)} ${code.slice(3)}`;
 
-/* The same checks as the server: the email and code are tried together, only that address's
-   invitation is looked at, and wrong guesses pause and eventually cancel it. */
+const OPEN_LIMIT = 30, OPEN_WINDOW_MS = 24 * 60 * 60 * 1000, MAX_BATCH = 50;
+const recentOpenFailures = () => S.openFailures.filter((t) => t > Date.now() - OPEN_WINDOW_MS).length;
+const openCodesPaused = () => recentOpenFailures() >= OPEN_LIMIT;
+
+/* The same checks as the server. If the address has an invitation of its own, only that invitation's
+   code can work, and wrong guesses pause and eventually cancel it. Otherwise only an open code can
+   work, and wrong guesses are counted across the whole portal and trip a breaker. */
 function verifyAccess(email, rawCode) {
   const code = normaliseCode(rawCode);
   const address = String(email || '').trim().toLowerCase();
   if (!address || !code) return null;
-  const inv = [...S.invitations].reverse().find((i) => i.email === address && i.status === 'Waiting');
-  if (!inv) return null;
-  if (inv.lockedUntil && inv.lockedUntil > Date.now()) return null;
-  if (inv.code === code) return inv;
-  inv.failed += 1;
-  if (inv.failed >= MAX_FAILURES) inv.status = 'Revoked';
-  else if (inv.failed % LOCK_AFTER === 0) inv.lockedUntil = Date.now() + LOCK_MS;
+  const tied = [...S.invitations].reverse().find((i) => i.email === address && i.status === 'Waiting');
+  if (tied) {
+    if (tied.lockedUntil && tied.lockedUntil > Date.now()) return null;
+    if (tied.code === code) return tied;
+    tied.failed += 1;
+    if (tied.failed >= MAX_FAILURES) tied.status = 'Revoked';
+    else if (tied.failed % LOCK_AFTER === 0) tied.lockedUntil = Date.now() + LOCK_MS;
+    return null;
+  }
+  if (openCodesPaused()) return null;
+  const open = S.invitations.find((i) => i.email === null && i.status === 'Waiting' && i.code === code);
+  if (open) return open;
+  S.openFailures.push(Date.now());
   return null;
 }
 const passwordProblem = (p) => (p.length >= 12 && /[a-z]/.test(p) && /[A-Z]/.test(p) && /\d/.test(p) && /[^A-Za-z0-9]/.test(p))
@@ -700,25 +712,37 @@ function loansView(s, me) {
 function invitationsView(s, me) {
   if (me.role !== 'Admin') return '<h2>Not allowed</h2><p>Your account does not have access to that page.</p>';
   const issued = UI.web.issued;
-  return `${errorBox(s)}<h2>Invitations</h2>
-    <p class="muted" style="margin-bottom:10px">An invitation is the only way in. Each one is single use, tied to one email address, comes with its own unique six-digit access code, and expires on its own.</p>
-    ${issued ? `<div class="notice good"><p>Invitation for <strong>${esc(issued.email)}</strong>. Give them this access code, ideally not in the same message as the link:</p>
-      <p style="font-size:30px;letter-spacing:.25em;margin:6px 0"><strong id="web-issued-code">${esc(showCode(issued.code))}</strong></p>
-      <p>They join at this link, which only names their address:</p>
-      <p style="margin-top:4px"><code id="web-issued-link">${esc(issued.link)}</code></p>
-      <p class="muted small" style="margin-top:6px">The code is shown once and cannot be recovered afterwards. If it is lost, create a new invitation.</p></div>` : ''}
+  const paused = openCodesPaused();
+  const misses = recentOpenFailures();
+  const stateOf = (i) => i.status === 'Waiting' && i.lockedUntil && i.lockedUntil > Date.now() ? 'Paused (wrong codes)' : i.status;
+  return `${errorBox(s)}<h2>Access codes</h2>
+    <p class="muted" style="margin-bottom:10px">Nobody can create an account without a unique six-digit access code. Generate them here, then hand them out. Each works once, expires on its own, and is shown only now.</p>
+    ${paused ? `<div class="notice bad"><p><strong>Open codes are paused.</strong> There have been ${misses} wrong guesses at open codes in the last day (the limit is ${OPEN_LIMIT}), which can mean someone is guessing. Codes tied to an email address still work.</p>
+      <p style="margin-top:6px"><button type="button" class="btn small" data-action="resume-open">Resume open codes</button></p></div>`
+      : misses ? `<p class="muted small" style="margin-bottom:8px">${misses} wrong guess(es) at open codes in the last day. Past ${OPEN_LIMIT}, open codes pause themselves.</p>` : ''}
+    ${issued ? `<div class="notice good" id="web-results"><p><strong>${issued.rows.length} code(s) generated.</strong> Copy them now. They cannot be shown again.</p>
+      <div class="scroll-x"><table class="table"><thead><tr><th>Access code</th><th>For</th></tr></thead><tbody>
+      ${issued.rows.map((r) => `<tr><td><strong class="issued-code" data-for="${esc(r.email || 'open')}" style="font-family:var(--mono);font-size:20px;letter-spacing:.12em;white-space:nowrap">${esc(showCode(r.code))}</strong></td>
+        <td>${r.email ? `${esc(r.email)}<br><code>${esc(registerLink(r.email))}</code>` : 'Open code: any email address'}</td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="muted small" style="margin-top:6px">Give each person their code separately from any link.</p></div>` : ''}
     <div class="card form" style="margin-bottom:14px">
-      <h3>Invite someone</h3>
+      <h3>Generate codes</h3>
+      <div class="field"><label for="web-inv-emails">Codes for specific people (recommended)</label>
+        <textarea id="web-inv-emails" placeholder="One email address per line"></textarea>
+        <span class="muted small">Each gets a code that only works with that address. The strongest option.</span></div>
+      <div class="field"><label for="web-inv-open">Open codes</label><input id="web-inv-open" type="number" min="0" max="${MAX_BATCH}" value="0">
+        <span class="muted small">Handed out before you know who will use them; the holder signs up with any address. Weaker: wrong guesses are counted across the whole portal and open codes pause after ${OPEN_LIMIT} in a day. They can only create ordinary members, and the portal cannot check the holder owns the address they type.</span></div>
       <div class="two">
-        <div class="field"><label for="web-inv-email">Their email</label><input id="web-inv-email" type="email" maxlength="200" placeholder="taylor@example.com"></div>
-        <div class="field"><label for="web-inv-role">Role</label><select id="web-inv-role"><option>Member</option><option>Admin</option></select></div>
+        <div class="field"><label for="web-inv-role">Role for codes tied to an email</label><select id="web-inv-role"><option>Member</option><option>Admin</option></select></div>
+        <div class="field"><label for="web-inv-label">Note for your records</label><input id="web-inv-label" maxlength="80" placeholder="e.g. Street party handout"></div>
       </div>
-      <div><button type="button" class="btn" data-action="create-invite">Create invitation</button></div>
+      <div class="row"><button type="button" class="btn" data-action="generate">Generate codes</button></div>
     </div>
-    <div class="card"><h3>Outstanding and recent</h3>
-      ${S.invitations.length ? `<div class="scroll-x"><table class="table"><thead><tr><th>Email</th><th>Role</th><th>State</th><th></th></tr></thead><tbody>
-        ${[...S.invitations].reverse().map((i) => `<tr><td>${esc(i.email)}</td><td>${i.role}</td><td>${i.status === 'Waiting' && i.lockedUntil && i.lockedUntil > Date.now() ? 'Paused (wrong codes)' : i.status}</td><td>${i.status === 'Waiting' ? `<button type="button" class="linkish danger" data-action="revoke-invite" data-id="${i.id}">Revoke</button>` : ''}</td></tr>`).join('')}
-      </tbody></table></div>` : '<p class="muted">No invitations yet.</p>'}
+    <div class="card"><h3>Every code issued</h3>
+      ${S.invitations.length ? `<div class="scroll-x"><table class="table"><thead><tr><th>For</th><th>Note</th><th>Role</th><th>State</th><th></th></tr></thead><tbody>
+        ${[...S.invitations].reverse().map((i) => `<tr><td>${i.email ? esc(i.email) : 'Open code'}</td><td>${esc(i.label || '')}</td><td>${i.role}</td><td>${stateOf(i)}</td><td>${i.status === 'Waiting' ? `<button type="button" class="linkish danger" data-action="revoke-invite" data-id="${i.id}">Revoke</button>` : ''}</td></tr>`).join('')}
+      </tbody></table></div>` : '<p class="muted">No codes yet.</p>'}
     </div>`;
 }
 
@@ -1037,18 +1061,42 @@ const ACTIONS = {
     done(s, 'Photo removed.');
   },
 
-  'create-invite'() {
-    const email = val('web', 'inv-email').trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return refuse('web', 'Enter a valid email address.');
-    if (S.members.some((m) => m.email === email)) return refuse('web', 'That address already belongs to a member.');
-    // Re-inviting an address retires any invitation still outstanding for it.
-    S.invitations.filter((i) => i.email === email && i.status === 'Waiting').forEach((i) => { i.status = 'Revoked'; });
-    const code = newAccessCode();
-    S.invitations.push({ id: S.next.invitation++, email, role: val('web', 'inv-role') || 'Member', code, status: 'Waiting', failed: 0, lockedUntil: 0 });
-    UI.web.issued = { email, code, link: registerLink(email) };
+  generate() {
+    const label = val('web', 'inv-label').trim();
+    const role = val('web', 'inv-role') || 'Member';
+    const open = Math.floor(Number(val('web', 'inv-open') || 0));
+    const pieces = val('web', 'inv-emails').split(/[\n\r,;]+/).map((x) => x.trim()).filter(Boolean);
+    const bad = pieces.filter((x) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x));
+    if (bad.length) return refuse('web', `These do not look like email addresses: ${bad.join(', ')}.`);
+    const emails = [...new Set(pieces.map((x) => x.toLowerCase()))];
+    if (!Number.isInteger(open) || open < 0 || open > MAX_BATCH) return refuse('web', `Open codes: pick a number from 0 to ${MAX_BATCH}.`);
+    if (emails.length + open < 1) return refuse('web', 'Enter at least one email address, or ask for one or more open codes.');
+    if (emails.length + open > MAX_BATCH) return refuse('web', `A batch can hold up to ${MAX_BATCH} codes; this asks for ${emails.length + open}.`);
+    const taken = emails.filter((e) => S.members.some((m) => m.email === e));
+    if (taken.length) return refuse('web', `These addresses already belong to members: ${taken.join(', ')}.`);
+    const rows = [];
+    emails.forEach((email) => {
+      // Re-issuing for an address retires any invitation still outstanding for it.
+      S.invitations.filter((i) => i.email === email && i.status === 'Waiting').forEach((i) => { i.status = 'Revoked'; });
+      const inv = { id: S.next.invitation++, email, label, role, code: newAccessCode(), status: 'Waiting', failed: 0, lockedUntil: 0 };
+      S.invitations.push(inv);
+      rows.push({ email, code: inv.code });
+    });
+    for (let n = 0; n < open; n++) {
+      // Open codes can only ever make members, whatever role the form says.
+      const inv = { id: S.next.invitation++, email: null, label, role: 'Member', code: newAccessCode(), status: 'Waiting', failed: 0, lockedUntil: 0 };
+      S.invitations.push(inv);
+      rows.push({ email: null, code: inv.code });
+    }
+    UI.web.issued = { rows };
     UI.web.error = null;
-    call('web', '', 'POST /Admin/Invitations?handler=Issue → 302 (unique code shown once, only a keyed hash stored)');
+    call('web', '', `POST /Admin/Invitations?handler=Issue → 200 (${rows.length} unique code(s) shown once, only keyed hashes stored)`);
     renderAll();
+  },
+  'resume-open'() {
+    S.openFailures = [];
+    call('web', '', 'POST /Admin/Invitations?handler=Resume → 302');
+    done('web', 'Open codes are working again.');
   },
   'revoke-invite'(s, d) {
     const inv = S.invitations.find((i) => i.id === Number(d.id));
@@ -1070,7 +1118,12 @@ const ACTIONS = {
       call('phone', 'POST /api/v1/auth/register → 400', '');
       return refuse('phone', NOT_VALID);
     }
-    const m = { id: S.next.member++, name, email: inv.email, role: inv.role };
+    const accountEmail = (inv.email || email).trim().toLowerCase();
+    if (!inv.email && S.members.some((x) => x.email === accountEmail)) {
+      // Not spent: the code is still good for a different address.
+      return refuse('phone', 'An account with that email already exists. Try signing in instead.');
+    }
+    const m = { id: S.next.member++, name, email: accountEmail, role: inv.role };
     S.members.push(m);
     inv.status = 'Accepted';
     call('phone', 'POST /api/v1/auth/register → 200 (access code accepted, invitation spent, device token issued)', '');
