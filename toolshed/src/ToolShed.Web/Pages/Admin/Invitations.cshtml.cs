@@ -59,7 +59,7 @@ public class InvitationsModel : PageModel
         [Display(Name = "Email addresses")]
         public string? Emails { get; set; }
 
-        [Range(0, InvitationService.MaxBatch)]
+        [Range(0, InvitationService.MaxBatch, ErrorMessage = "A batch can hold up to 50 codes, so ask for between 0 and 50 open codes.")]
         [Display(Name = "Open codes")]
         public int OpenCount { get; set; }
 
