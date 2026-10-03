@@ -82,8 +82,10 @@ jobs:
       - name: Build for the iOS simulator
         run: |
           # Restrict the build to iOS: on a Mac the project would otherwise also restore the
-          # Android target, whose workload this job does not install.
+          # Android target, whose workload this job does not install. A simulator build needs no
+          # signing certificate, and a CI runner has none, so signing is switched off.
           dotnet build toolshed/src/ToolShed.Mobile -f net10.0-ios -c Debug \
             -p:MobileTargets=net10.0-ios \
             -p:RuntimeIdentifier=iossimulator-arm64 \
-            -p:ValidateXcodeVersion=false
+            -p:ValidateXcodeVersion=false \
+            -p:EnableCodeSigning=false
