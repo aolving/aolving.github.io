@@ -154,6 +154,7 @@ builder.WebHost.ConfigureKestrel(options =>
 });
 
 var authPermits = builder.Configuration.GetValue("RateLimits:AuthPermits", 10);
+var generalPermits = builder.Configuration.GetValue("RateLimits:GeneralPermits", 300);
 
 builder.Services.AddRateLimiter(options =>
 {
@@ -174,7 +175,7 @@ builder.Services.AddRateLimiter(options =>
             })
             : RateLimitPartition.GetFixedWindowLimiter($"general:{client}", _ => new FixedWindowRateLimiterOptions
             {
-                PermitLimit = 300,
+                PermitLimit = generalPermits,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0
             });

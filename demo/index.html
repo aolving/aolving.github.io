@@ -211,7 +211,7 @@ code { font-family: var(--mono); font-size: 12.5px; overflow-wrap: anywhere; }
       <li><b>On the website</b> you are Olive, the drill's owner. Open Loans, then approve Ben's request with a note.</li>
       <li><b>Back on the phone</b>, Loans shows Approved with Olive's note, and the drill's calendar is red on both screens.</li>
       <li><b>On the website</b>, switch to Priya and ask for the same dates. They are already spoken for.</li>
-      <li><b>Invite someone.</b> On the website as Olive, open Invitations and create a link. On the phone, sign out, choose "I have an invitation" and paste it.</li>
+      <li><b>Invite someone.</b> On the website as Olive, open Invitations and create one. It comes with a six-digit access code. On the phone, sign out, choose "I have an invitation", and enter the email, the code and a password. A wrong code is refused, and five in a row lock the invitation.</li>
       <li><b>Photos.</b> On My tools, list a tool and press "Try an SVG disguised as a photo". It is refused, because the file's contents decide, not its name.</li>
     </ol>
   </section>
@@ -431,25 +431,46 @@ function attachPhoto(t, photo) {
   t.photos.push(photo);
 }
 
-/* ---- invitations ---- */
-const newToken = () => {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-};
+/* ---- invitations and six-digit access codes ---- */
 const SITE = 'https://tools.example.com';
-const inviteLink = (token) => `${SITE}/Account/Register?token=${token}`;
-const isTokenShaped = (v) => v.length >= 20 && /^[A-Za-z0-9_-]+$/.test(v);
-function extractToken(input) {
-  const text = (input || '').trim();
-  if (!text) return null;
-  if (/^https?:\/\//i.test(text)) {
-    try {
-      const token = new URL(text).searchParams.get('token');
-      return token && isTokenShaped(token) ? token : null;
-    } catch { return null; }
+const registerLink = (email) => `${SITE}/Account/Register?email=${encodeURIComponent(email)}`;
+const NOT_VALID = 'That email and access code do not match a valid invitation. Check both, or ask your administrator for a new one.';
+const LOCK_AFTER = 5, LOCK_MS = 15 * 60 * 1000, MAX_FAILURES = 30;
+
+// Six digits, uniformly random, and never one that any invitation has had before.
+function newAccessCode() {
+  const used = new Set(S.invitations.map((i) => i.code));
+  for (let n = 0; n < 50; n++) {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    const code = String(buf[0] % 1000000).padStart(6, '0');
+    if (!used.has(code)) return code;
   }
-  return isTokenShaped(text) ? text : null;
+  throw new Error('No unused access code left.');
+}
+// "123 456", "123-456" and " 123456 " all mean the same code; anything else is not one.
+function normaliseCode(input) {
+  const text = String(input || '');
+  if (!/^[0-9\s-]*$/.test(text)) return null;
+  const digits = text.replace(/[^0-9]/g, '');
+  return digits.length === 6 ? digits : null;
+}
+const showCode = (code) => `${code.slice(0, 3)} ${code.slice(3)}`;
+
+/* The same checks as the server: the email and code are tried together, only that address's
+   invitation is looked at, and wrong guesses pause and eventually cancel it. */
+function verifyAccess(email, rawCode) {
+  const code = normaliseCode(rawCode);
+  const address = String(email || '').trim().toLowerCase();
+  if (!address || !code) return null;
+  const inv = [...S.invitations].reverse().find((i) => i.email === address && i.status === 'Waiting');
+  if (!inv) return null;
+  if (inv.lockedUntil && inv.lockedUntil > Date.now()) return null;
+  if (inv.code === code) return inv;
+  inv.failed += 1;
+  if (inv.failed >= MAX_FAILURES) inv.status = 'Revoked';
+  else if (inv.failed % LOCK_AFTER === 0) inv.lockedUntil = Date.now() + LOCK_MS;
+  return null;
 }
 const passwordProblem = (p) => (p.length >= 12 && /[a-z]/.test(p) && /[A-Z]/.test(p) && /\d/.test(p) && /[^A-Za-z0-9]/.test(p))
   ? null : 'Passwords need at least 12 characters, with upper and lower case letters, a digit and a symbol.';
@@ -680,10 +701,12 @@ function invitationsView(s, me) {
   if (me.role !== 'Admin') return '<h2>Not allowed</h2><p>Your account does not have access to that page.</p>';
   const issued = UI.web.issued;
   return `${errorBox(s)}<h2>Invitations</h2>
-    <p class="muted" style="margin-bottom:10px">An invitation is the only way in. Each one is single use, tied to one email address and expires on its own.</p>
-    ${issued ? `<div class="notice good"><p>Invitation for <strong>${esc(issued.email)}</strong>. Send this link to that address now. It is shown once and cannot be recovered afterwards.</p>
-      <p style="margin-top:6px"><code id="web-issued-link">${esc(issued.link)}</code></p>
-      <p style="margin-top:6px"><button type="button" class="btn small" data-action="copy-link">Copy link</button></p></div>` : ''}
+    <p class="muted" style="margin-bottom:10px">An invitation is the only way in. Each one is single use, tied to one email address, comes with its own unique six-digit access code, and expires on its own.</p>
+    ${issued ? `<div class="notice good"><p>Invitation for <strong>${esc(issued.email)}</strong>. Give them this access code, ideally not in the same message as the link:</p>
+      <p style="font-size:30px;letter-spacing:.25em;margin:6px 0"><strong id="web-issued-code">${esc(showCode(issued.code))}</strong></p>
+      <p>They join at this link, which only names their address:</p>
+      <p style="margin-top:4px"><code id="web-issued-link">${esc(issued.link)}</code></p>
+      <p class="muted small" style="margin-top:6px">The code is shown once and cannot be recovered afterwards. If it is lost, create a new invitation.</p></div>` : ''}
     <div class="card form" style="margin-bottom:14px">
       <h3>Invite someone</h3>
       <div class="two">
@@ -694,7 +717,7 @@ function invitationsView(s, me) {
     </div>
     <div class="card"><h3>Outstanding and recent</h3>
       ${S.invitations.length ? `<div class="scroll-x"><table class="table"><thead><tr><th>Email</th><th>Role</th><th>State</th><th></th></tr></thead><tbody>
-        ${[...S.invitations].reverse().map((i) => `<tr><td>${esc(i.email)}</td><td>${i.role}</td><td>${i.status}</td><td>${i.status === 'Waiting' ? `<button type="button" class="linkish danger" data-action="revoke-invite" data-id="${i.id}">Revoke</button>` : ''}</td></tr>`).join('')}
+        ${[...S.invitations].reverse().map((i) => `<tr><td>${esc(i.email)}</td><td>${i.role}</td><td>${i.status === 'Waiting' && i.lockedUntil && i.lockedUntil > Date.now() ? 'Paused (wrong codes)' : i.status}</td><td>${i.status === 'Waiting' ? `<button type="button" class="linkish danger" data-action="revoke-invite" data-id="${i.id}">Revoke</button>` : ''}</td></tr>`).join('')}
       </tbody></table></div>` : '<p class="muted">No invitations yet.</p>'}
     </div>`;
 }
@@ -716,12 +739,13 @@ function welcomeView() {
 }
 
 function inviteView() {
-  return `${errorBox('phone')}<h2>Accept an invitation</h2>
-    <p class="muted" style="margin-bottom:10px">Paste the invitation link you were sent, then choose a name and password.</p>
+  return `${errorBox('phone')}<h2>Create your account</h2>
+    <p class="muted" style="margin-bottom:10px">You need the email address you were invited with and the six-digit access code your administrator gave you.</p>
     <div class="form">
-      <div class="field"><label for="phone-inv-link">Invitation link</label><input id="phone-inv-link" placeholder="https://tools.example.com/Account/Register?token=..." autocomplete="off"></div>
+      <div class="field"><label for="phone-inv-email">Email</label><input id="phone-inv-email" type="email" autocomplete="off"></div>
+      <div class="field"><label for="phone-inv-code">Access code</label><input id="phone-inv-code" inputmode="numeric" maxlength="7" placeholder="123 456" autocomplete="off"></div>
       <div class="field"><label for="phone-inv-name">Your name</label><input id="phone-inv-name" maxlength="80"></div>
-      <div class="field"><label for="phone-inv-pw">Password</label><input id="phone-inv-pw" type="password" autocomplete="new-password"></div>
+      <div class="field"><label for="phone-inv-pw">Choose a password</label><input id="phone-inv-pw" type="password" autocomplete="new-password"></div>
       <p class="muted small">At least 12 characters, with upper and lower case, a digit and a symbol.</p>
       <div class="field"><label for="phone-inv-pw2">Confirm password</label><input id="phone-inv-pw2" type="password" autocomplete="new-password"></div>
       <div><button type="button" class="btn" data-action="join">Create my account</button></div>
@@ -1019,11 +1043,11 @@ const ACTIONS = {
     if (S.members.some((m) => m.email === email)) return refuse('web', 'That address already belongs to a member.');
     // Re-inviting an address retires any invitation still outstanding for it.
     S.invitations.filter((i) => i.email === email && i.status === 'Waiting').forEach((i) => { i.status = 'Revoked'; });
-    const token = newToken();
-    S.invitations.push({ id: S.next.invitation++, email, role: val('web', 'inv-role') || 'Member', token, status: 'Waiting' });
-    UI.web.issued = { email, link: inviteLink(token) };
+    const code = newAccessCode();
+    S.invitations.push({ id: S.next.invitation++, email, role: val('web', 'inv-role') || 'Member', code, status: 'Waiting', failed: 0, lockedUntil: 0 });
+    UI.web.issued = { email, code, link: registerLink(email) };
     UI.web.error = null;
-    call('web', '', 'POST /Admin/Invitations?handler=Issue → 302 (token shown once, only its hash stored)');
+    call('web', '', 'POST /Admin/Invitations?handler=Issue → 302 (unique code shown once, only a keyed hash stored)');
     renderAll();
   },
   'revoke-invite'(s, d) {
@@ -1032,33 +1056,24 @@ const ACTIONS = {
     call('web', '', 'POST /Admin/Invitations?handler=Revoke → 302');
     done('web', 'Invitation revoked.');
   },
-  'copy-link'() {
-    const text = UI.web.issued?.link || '';
-    const fallback = () => {
-      const node = $('#web-issued-link');
-      if (node) { const r = document.createRange(); r.selectNodeContents(node); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); }
-      toast('web', 'Link selected. Copy it with your keyboard.');
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => toast('web', 'Link copied.'), fallback);
-    else fallback();
-  },
   join() {
-    const token = extractToken(val('phone', 'inv-link'));
+    const email = val('phone', 'inv-email').trim();
     const name = val('phone', 'inv-name').trim(), pw = val('phone', 'inv-pw'), pw2 = val('phone', 'inv-pw2');
-    if (!token) return refuse('phone', 'That does not look like an invitation link. Paste the whole link you were sent.');
+    if (!email.includes('@')) return refuse('phone', 'Enter the email address you were invited with.');
+    if (!normaliseCode(val('phone', 'inv-code'))) return refuse('phone', 'The access code is six digits. Check what your administrator gave you.');
     if (name.length < 2) return refuse('phone', 'Enter the name other members will see.');
     if (pw !== pw2) return refuse('phone', 'The two passwords do not match.');
     const problem = passwordProblem(pw);
     if (problem) return refuse('phone', problem);
-    const inv = S.invitations.find((i) => i.token === token && i.status === 'Waiting');
+    const inv = verifyAccess(email, val('phone', 'inv-code'));
     if (!inv) {
       call('phone', 'POST /api/v1/auth/register → 400', '');
-      return refuse('phone', 'This invitation is not valid. It may already have been used, or it has expired.');
+      return refuse('phone', NOT_VALID);
     }
     const m = { id: S.next.member++, name, email: inv.email, role: inv.role };
     S.members.push(m);
     inv.status = 'Accepted';
-    call('phone', 'POST /api/v1/auth/register → 200 (invitation spent, device token issued)', '');
+    call('phone', 'POST /api/v1/auth/register → 200 (access code accepted, invitation spent, device token issued)', '');
     UI.phone.memberId = m.id; UI.phone.tab = 'catalogue'; UI.phone.stack = []; UI.phone.error = null;
     renderAll();
     toast('phone', `Welcome, ${name.split(' ')[0]}.`);

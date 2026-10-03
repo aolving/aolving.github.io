@@ -30,6 +30,8 @@ public sealed class PortalFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("Seed__AdminEmail", AdminEmail);
         Environment.SetEnvironmentVariable("Seed__AdminPassword", AdminPassword);
         Environment.SetEnvironmentVariable("RateLimits__AuthPermits", "10000");
+        // Every request from the test host shares one address, so the general limit would otherwise trip.
+        Environment.SetEnvironmentVariable("RateLimits__GeneralPermits", "1000000");
     }
 
     public HttpClient NewClient() => CreateClient(new WebApplicationFactoryClientOptions

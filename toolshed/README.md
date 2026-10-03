@@ -59,12 +59,13 @@ variable (use `__` for `:`).
 | Setting | Purpose |
 | --- | --- |
 | `ConnectionStrings:DefaultConnection` | SQLite database (default `App_Data/toolshed.db`) |
-| `Storage:PhotoRoot`, `Storage:KeysDirectory` | Where photos and signing keys live |
+| `Storage:PhotoRoot`, `Storage:KeysDirectory` | Where photos live, and where the signing keys and the access-code secret live |
 | `Seed:AdminEmail`, `Seed:AdminPassword`, `Seed:AdminDisplayName` | First administrator, used only while no members exist |
 | `Portal:Name`, `Portal:Tagline` | Branding |
 | `AllowedHosts` | Set to your hostname in production |
 | `Hosting:BehindProxy` | Trust `X-Forwarded-*` from a reverse proxy |
 | `RateLimits:AuthPermits` | Sign-in/reset POSTs per IP per five minutes (default 10) |
+| `RateLimits:GeneralPermits` | All other requests per IP per minute (default 300) |
 | `Smtp:Host`, `Port`, `UseStartTls`, `Username`, `Password`, `FromAddress`, `FromName` | Optional email |
 
 ### Email is optional
@@ -81,7 +82,7 @@ fails the action it belongs to.
 in to your portal and uses the same accounts, tools, photos and loans as the website, so a tool
 listed on the website is in the app and a loan approved in the app shows on the website.
 
-**What members can do in the app:** sign in (or accept an invitation by pasting its link), browse and
+**What members can do in the app:** sign in, or create an account with their invited email, the six-digit access code and a password, browse and
 search the catalogue, open a tool to see its photos and a six-week availability calendar, request a
 loan, list their own tools (take or choose photos, set the cover, pause or delete a listing), and
 handle loans — approve or decline with a note, mark returned, cancel, see what is overdue.
@@ -135,7 +136,7 @@ All routes are under `/api/v1`, speak JSON, and (except sign-in) need the bearer
 
 | Route | Purpose |
 | --- | --- |
-| `POST /auth/login` · `POST /auth/register` · `POST /auth/logout` | Sign in, redeem an invitation, end this device |
+| `POST /auth/login` · `POST /auth/register` · `POST /auth/logout` | Sign in; create an account from `{ email, accessCode, displayName, password }`; end this device |
 | `GET /me` | The signed-in member |
 | `GET /tools?query=&category=&mine=` · `GET /tools/{id}` | Browse, search, and a tool with its photos and held dates |
 | `POST /tools` · `PUT /tools/{id}` · `DELETE /tools/{id}` | List, edit (including pausing) and delete your own tools |
@@ -144,8 +145,8 @@ All routes are under `/api/v1`, speak JSON, and (except sign-in) need the bearer
 | `POST /tools/{id}/bookings` · `GET /bookings` | Request a loan; your incoming and outgoing loans |
 | `POST /bookings/{id}/approve` · `decline` · `cancel` · `returned` | Act on a loan |
 
-Sign-in and registration share the website's rate limit and lockout, and give the same answer whether or
-not an address is a member.
+Sign-in and registration share the website's rate limit and lockout. Registration applies the access-code rules
+above, and every failure gets the same answer.
 
 ### Building and installing
 
@@ -177,27 +178,48 @@ release signing could be exercised in this repository's CI.
 ## Try it without installing anything
 
 `demo/index.html` (in the repository root) is an interactive demo: the website and the phone app side by side,
-sharing one set of sample data, so you can request a loan on the phone and approve it on the website. It runs
+sharing one set of sample data, so you can request a loan on the phone and approve it on the website, and
+invite someone with an access code. It runs
 entirely in the browser, applies the same booking rules as the server (inclusive dates, no double-booking, loan
-limits, auto-declining competing requests, overdue flags) and the same photo and invitation checks, and shows
+limits, auto-declining competing requests, overdue flags) and the same photo and access-code checks (unique codes, the lock after five wrong ones), and shows
 the API calls and emails each action would cause. It is a simulation for trying the flows: it does not talk to a
 portal, and nothing you do in it is saved. Open the file in a browser, or visit `/demo/` once the site is published.
 
-## How the invite flow works
+## How joining works
 
-1. An admin opens **Invitations**, enters an email address, picks a role and a
-   lifetime (1–30 days).
-2. The portal generates a 256-bit token and shows the sign-up link **once** (and emails
-   it, if SMTP is set up). Only the SHA-256 hash is stored, so the link cannot be
-   recovered from the database.
-3. The recipient opens the link and sets a display name and password. The address
-   comes from the invitation, not the form, so a leaked link cannot be pointed at a
-   different mailbox.
-4. The invitation is spent. Re-inviting an address revokes any invitation still
-   outstanding for it, and an admin can revoke one at any time.
+Creating an account takes four things, all checked together: **the email address the member was invited with,
+a password they choose, their name, and a unique six-digit access code.** There is no other way in, and no open
+registration page.
 
-There is no open registration page: `/Account/Register` without a live token shows
-nothing but an explanation.
+1. An admin opens **Invitations**, enters an email address, picks a role and a lifetime (1–30 days).
+2. The portal issues a **six-digit access code that no other invitation has ever had**, and shows it to the admin
+   **once**, beside the registration link. The link only names the address (`/Account/Register?email=…`); the code
+   is never in a link, so the two can travel by different routes. If email is configured, only the link is
+   mailed; the code is given separately (in person, by phone), so a copy of the email alone is not enough to join.
+3. The invitee opens the page, confirms their email, enters the access code, and chooses their name and password.
+   The email must be the invited one, and the code must be the one issued for it.
+4. The invitation is spent. Re-inviting an address retires any invitation still outstanding for it, and an admin
+   can revoke one at any time.
+
+The website, the JSON API and the mobile app all use the same service and the same rules.
+
+### Why a six-digit code is safe enough
+
+A six-digit code is one in a million, so it is never a bare check:
+
+| Defence | Effect |
+| --- | --- |
+| Checked **together with the email** | Only that address's invitation is tried, so an attacker needs a valid invited address *and* the code. |
+| **Pause after five wrong codes** | The invitation stops checking codes for 15 minutes, even for the right one, so guessing is slowed to a crawl. |
+| **Cancelled after thirty wrong codes** | The invitation is revoked and must be reissued. In total an attacker gets 30 guesses in a million, about 0.003%. |
+| **Keyed hash at rest** | Codes are stored as HMAC-SHA256 under a secret in `access-code.key`, kept beside the signing keys and apart from the database. A plain hash of a six-digit number can be reversed instantly by anyone with a copy of the database; this cannot. |
+| **Unique across all invitations** | A unique index, with retries on collision, so each code identifies exactly one invitation, ever. (That caps the portal at a million invitations in its lifetime.) |
+| **One answer for every failure** | Wrong code, wrong email, no invitation, spent, expired, locked, malformed: the same message, so the form cannot reveal who has been invited. |
+| **IP rate limit** | The website and API sign-up/sign-in endpoints share the per-IP limit (`RateLimits:AuthPermits`). |
+| **Weak passwords do not burn the code** | A password that fails the policy is refused before the invitation is spent, so the member can try again. |
+
+If a code is lost, create a new invitation: the old one is retired. Keep `access-code.key` with your backups
+(it is in the same volume as the signing keys); if it is lost, outstanding invitations stop working and need reissuing.
 
 ## Looking after members
 
@@ -233,7 +255,7 @@ dates; the rest release them.
 
 | Concern | How it is handled |
 | --- | --- |
-| Who can get in | Invitation only. Single use, email-bound, expiring, stored hashed. |
+| Who can get in | Invitation only: the invited email, a password they choose and a unique six-digit access code, all checked together. Single use, expiring, rate-limited, locked after repeated wrong codes, code stored as a keyed hash. |
 | Default access | The authorization *fallback* policy requires a signed-in user, so a new page is private unless it opts out. |
 | Admin pages | `/Admin` is gated by a `RequireAdmin` role policy. |
 | Passwords | 12+ characters, mixed case, digit and symbol; hashed by Identity (PBKDF2). |
@@ -264,14 +286,14 @@ dotnet ef migrations add <Name> --project src/ToolShed.Web --output-dir Data/Mig
 
 `dotnet test` runs four layers:
 
-- **Rule tests** — date maths, loan-window validation, upload sniffing, token handling.
-- **Service tests** — the booking rules against a real in-memory SQLite database, so
+- **Rule tests** — date maths, loan-window validation, upload sniffing, access-code format and hashing, token handling.
+- **Service tests** — the booking and access-code rules (uniqueness, lockout, expiry) against a real in-memory SQLite database, so
   queries are translated by the same provider the portal runs on.
 - **Integration tests** — the real app is hosted and driven over HTTP: who gets in, the
   invitation flow, photo handling, a full loan from request to return, password reset,
   roles and suspension.
 - **API tests** — the real portal driven through `ToolShed.Client`, the library the app uses:
-  token sign-in and revocation, redeeming invitations, tools and photos, a whole loan, and
+  token sign-in and revocation, creating accounts with access codes, tools and photos, a whole loan, and
   that the website and the API see the same data.
 
 GitHub Actions (`.github/workflows/toolshed-ci.yml`) builds and tests the server on every push,
