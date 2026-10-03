@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -19,6 +19,15 @@ namespace ToolShed.Web.Data.Migrations
                 name: "IX_Invitations_TokenHash",
                 table: "Invitations",
                 newName: "IX_Invitations_CodeHash");
+
+            // Invitations issued before access codes existed carry a hash of a long link token, not of
+            // a six-digit code, so none of them can be redeemed any more. Retire the unspent ones
+            // visibly (as revoked) rather than leave them showing as "Waiting". Timestamps are stored
+            // as .NET ticks; 621355968000000000 is the Unix epoch in ticks.
+            migrationBuilder.Sql(
+                "UPDATE \"Invitations\" " +
+                "SET \"RevokedUtc\" = (CAST(strftime('%s', 'now') AS INTEGER) * 10000000) + 621355968000000000 " +
+                "WHERE \"RedeemedUtc\" IS NULL AND \"RevokedUtc\" IS NULL;");
 
             migrationBuilder.AddColumn<int>(
                 name: "FailedAttempts",
